@@ -8759,7 +8759,7 @@ var $async$ap0=A.I(function(a,b){if(a===1)return A.E(b,r)
 while(true)switch(s){case 0:if($.a6==null)A.arD()
 $.a6.toString
 s=2
-return A.A(A.abY("sb_publishable_VhGhstTaGWp8azbpXgLOFg_g5vj7728","https://vhfxigewirlnqrrrjbjn.supabase.co/rest/v1/"),$async$ap0)
+return A.A(A.abY("sb_publishable_VhGhstTaGWp8azbpXgLOFg_g5vj7728","https://vhfxigewirlnqrrrjbjn.supabase.co"),$async$ap0)
 case 2:if($.a6==null)A.arD()
 q=$.a6
 q.toString
