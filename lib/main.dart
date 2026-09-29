@@ -18,7 +18,7 @@ class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
 
-  bool isArabic = true;
+  bool isArabic = false;
   ThemeMode themeMode = ThemeMode.dark;
 
   void toggleLanguage() {
