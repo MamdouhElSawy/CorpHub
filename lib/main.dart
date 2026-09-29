@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +24,7 @@ void main() async {
   runApp(const CorpHubApp());
 }
 
-// ----------------- إدارة اللغات والمظهر -----------------
+// ----------------- إدارة اللغات والمظهر وهيكل EGL -----------------
 class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
@@ -117,7 +118,22 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAll();
+    _checkSavedSessionAndLoad();
+  }
+
+  Future<void> _checkSavedSessionAndLoad() async {
+    setState(() => _loading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedUserStr = prefs.getString('saved_user_session');
+      if (savedUserStr != null) {
+        _currentUser = jsonDecode(savedUserStr);
+      }
+    } catch (_) {}
+
+    await _fetchSettings();
+    await _fetchCompanies();
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _loadAll() async {
@@ -154,6 +170,115 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     if (_currentUser == null) return false;
     final r = _currentUser!['role'];
     return r == 'admin' || r == 'editor';
+  }
+
+  void _openChangePasswordDialog() {
+    final s = AppState.instance;
+    final oldPassCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    final confirmPassCtrl = TextEditingController();
+    String? err;
+    bool saving = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(s.t('Change Password', 'تغيير كلمة المرور')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: oldPassCtrl,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: s.t('Current Password', 'كلمة المرور الحالية'),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: newPassCtrl,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: s.t('New Password', 'كلمة المرور الجديدة'),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: confirmPassCtrl,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: s.t('Confirm New Password', 'تأكيد كلمة المرور الجديدة'),
+                ),
+              ),
+              if (err != null) ...[
+                const SizedBox(height: 10),
+                Text(err!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(s.t('Cancel', 'إلغاء')),
+            ),
+            ElevatedButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final oldP = oldPassCtrl.text.trim();
+                      final newP = newPassCtrl.text.trim();
+                      final confP = confirmPassCtrl.text.trim();
+
+                      if (oldP != _currentUser!['password_hash']) {
+                        setDialogState(() => err = s.t('Incorrect current password', 'كلمة المرور الحالية غير صحيحة'));
+                        return;
+                      }
+                      if (newP.isEmpty) {
+                        setDialogState(() => err = s.t('New password cannot be empty', 'كلمة المرور لا يمكن أن تكون فارغة'));
+                        return;
+                      }
+                      if (newP != confP) {
+                        setDialogState(() => err = s.t('Passwords do not match', 'كلمتا المرور غير متطابقتين'));
+                        return;
+                      }
+
+                      setDialogState(() {
+                        saving = true;
+                        err = null;
+                      });
+
+                      try {
+                        await Supabase.instance.client
+                            .from('app_users')
+                            .update({'password_hash': newP})
+                            .eq('id', _currentUser!['id']);
+
+                        _currentUser!['password_hash'] = newP;
+                        final prefs = await SharedPreferences.getInstance();
+                        if (prefs.containsKey('saved_user_session')) {
+                          await prefs.setString('saved_user_session', jsonEncode(_currentUser));
+                        }
+
+                        if (mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(s.t('Password changed successfully!', 'تم تغيير كلمة المرور بنجاح!'))),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() => err = e.toString());
+                      } finally {
+                        setDialogState(() => saving = false);
+                      }
+                    },
+              child: saving ? const CircularProgressIndicator() : Text(s.t('Update Password', 'تحديث كلمة المرور')),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _openSettingsMenu() {
@@ -221,9 +346,19 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     },
                   ),
                 ListTile(
+                  leading: const Icon(Icons.password, color: Colors.orangeAccent),
+                  title: Text(s.t('Change Password', 'تغيير كلمة المرور')),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _openChangePasswordDialog();
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.logout, color: Colors.redAccent),
                   title: Text('${s.t("Logout", "خروج")} (${_currentUser!["username"] ?? ""}) - ${_currentUser!["role"]?.toString().toUpperCase()}'),
-                  onTap: () {
+                  onTap: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove('saved_user_session');
                     setState(() => _currentUser = null);
                     Navigator.pop(ctx);
                   },
@@ -510,7 +645,7 @@ class CompanyCard extends StatelessWidget {
   }
 }
 
-// ----------------- استمارة إضافة وتعديل الشركة المطورة والشاملة -----------------
+// ----------------- استمارة إضافة وتعديل الشركة -----------------
 class AdvancedCompanyDialog extends StatefulWidget {
   final Map<String, dynamic>? company;
   const AdvancedCompanyDialog({super.key, this.company});
@@ -555,7 +690,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
         });
       }
     } else {
-      // إعطاء حقل افتراضي لسهولة الإدخال
       _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController()});
       _contacts.add({'name_en': TextEditingController(), 'name_ar': TextEditingController(), 'role': TextEditingController(), 'phone': TextEditingController()});
     }
@@ -567,7 +701,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
     final ar = _nameAr.text.trim();
 
     if (en.isEmpty && ar.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Please enter at least one company name', 'برجاء كتابة اسم الشركة'))));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Please enter company name', 'برجاء كتابة اسم الشركة'))));
       return;
     }
 
@@ -587,12 +721,10 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       } else {
         compId = widget.company!['id'];
         await Supabase.instance.client.from('companies').update(compData).eq('id', compId);
-        // مسح القديم لحفظ التعديلات الجديدة
         await Supabase.instance.client.from('company_addresses').delete().eq('company_id', compId);
         await Supabase.instance.client.from('company_contacts').delete().eq('company_id', compId);
       }
 
-      // حفظ العناوين
       for (var a in _addresses) {
         final aEn = (a['en'] as TextEditingController).text.trim();
         final aAr = (a['ar'] as TextEditingController).text.trim();
@@ -606,7 +738,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
         }
       }
 
-      // حفظ جهات الاتصال
       for (var c in _contacts) {
         final cEn = (c['name_en'] as TextEditingController).text.trim();
         final cAr = (c['name_ar'] as TextEditingController).text.trim();
@@ -660,7 +791,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
             Expanded(
               child: ListView(
                 children: [
-                  // بيانات الشركة الأساسية
                   Text(s.t('1. Company Information', '١. بيانات الشركة الأساسية'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
                   const SizedBox(height: 10),
                   Row(
@@ -687,11 +817,10 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                   ),
 
                   const SizedBox(height: 24),
-                  // العناوين
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(s.t('2. Branch & Operating Addresses', '٢. العناوين والمقرات'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
+                      Text(s.t('2. Addresses', '٢. العناوين والمقرات'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
                       TextButton.icon(
                         icon: const Icon(Icons.add_location_alt, size: 18),
                         label: Text(s.t('Add Address', 'إضافة عنوان')),
@@ -725,15 +854,9 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                                 ),
                               ],
                             ),
-                            TextField(
-                              controller: a['en'],
-                              decoration: InputDecoration(labelText: s.t('Address (English)', 'العنوان بالإنجليزي')),
-                            ),
+                            TextField(controller: a['en'], decoration: InputDecoration(labelText: s.t('Address (English)', 'العنوان بالإنجليزي'))),
                             const SizedBox(height: 6),
-                            TextField(
-                              controller: a['ar'],
-                              decoration: InputDecoration(labelText: s.t('Address (Arabic)', 'العنوان بالعربي')),
-                            ),
+                            TextField(controller: a['ar'], decoration: InputDecoration(labelText: s.t('Address (Arabic)', 'العنوان بالعربي'))),
                           ],
                         ),
                       ),
@@ -741,11 +864,10 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                   }),
 
                   const SizedBox(height: 24),
-                  // جهات الاتصال
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(s.t('3. Contact Persons & Reps', '٣. مسؤولو التواصل'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
+                      Text(s.t('3. Contact Persons', '٣. مسؤولو التواصل'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
                       TextButton.icon(
                         icon: const Icon(Icons.person_add, size: 18),
                         label: Text(s.t('Add Contact', 'إضافة مسؤول')),
@@ -811,7 +933,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   }
 }
 
-// ----------------- نافذة الدخول مع التحقق الصارم من الباسورد -----------------
+// ----------------- نافذة الدخول مع خيار Stay Logged In -----------------
 class CleanLoginDialog extends StatefulWidget {
   const CleanLoginDialog({super.key});
 
@@ -822,6 +944,7 @@ class CleanLoginDialog extends StatefulWidget {
 class _CleanLoginDialogState extends State<CleanLoginDialog> {
   final _pinController = TextEditingController();
   final _passController = TextEditingController();
+  bool _stayLoggedIn = true; // الافتراضي مفعل
   bool _loading = false;
   String? _error;
   bool _showRequestForm = false;
@@ -855,9 +978,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
       if (res == null) {
         setState(() => _error = s.t('Invalid PIN code', 'كود الدخول غير صحيح'));
       } else {
-        // التحقق من الباسورد
         if (res['is_first_login'] == true) {
-          // تثبيت الباسورد لأول مرة
           await Supabase.instance.client.from('app_users').update({
             'password_hash': pass,
             'is_first_login': false,
@@ -865,12 +986,20 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
           }).eq('id', res['id']);
           res['username'] = 'Admin';
           res['password_hash'] = pass;
+
+          if (_stayLoggedIn) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('saved_user_session', jsonEncode(res));
+          }
           if (mounted) Navigator.pop(context, res);
         } else {
-          // التحقق من تطابق الباسورد المحفوظ
           if (res['password_hash'] != pass) {
             setState(() => _error = s.t('Incorrect Password', 'كلمة المرور غير صحيحة'));
           } else {
+            if (_stayLoggedIn) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('saved_user_session', jsonEncode(res));
+            }
             if (mounted) Navigator.pop(context, res);
           }
         }
@@ -949,7 +1078,15 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(s.t('Stay logged in', 'تذكرني (البقاء قيد تسجيل الدخول)')),
+                value: _stayLoggedIn,
+                onChanged: (v) => setState(() => _stayLoggedIn = v ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -979,7 +1116,6 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   hintText: s.t('Full Name', 'الاسم بالكامل'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -990,7 +1126,6 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 onSubmitted: (_) => _submitRequest(),
                 decoration: InputDecoration(
                   hintText: s.t('WhatsApp Phone Number', 'رقم الهاتف (واتساب)'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
               const SizedBox(height: 16),
@@ -1168,7 +1303,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     widget.onUpdate();
   }
 
-  // --- دوال إدارة الإكسيل ---
   void _downloadTemplate() {
     var excel = Excel.createExcel();
     Sheet sheet = excel['CompaniesTemplate'];
