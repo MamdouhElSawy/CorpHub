@@ -21,6 +21,10 @@ void main() async {
   }
 
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+  
+  // تحميل إعدادات اللغة والثيم المحفوظة للمستخدم/الزائر مسبقاً
+  await AppState.instance.loadSavedPreferences();
+
   runApp(const CorpHubApp());
 }
 
@@ -29,17 +33,38 @@ class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
 
-  bool isArabic = false;
+  bool isArabic = false; // الافتراضي إنجليزي
   ThemeMode themeMode = ThemeMode.dark;
 
-  void toggleLanguage() {
-    isArabic = !isArabic;
-    notifyListeners();
+  Future<void> loadSavedPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey('app_is_arabic')) {
+        isArabic = prefs.getBool('app_is_arabic') ?? false;
+      }
+      if (prefs.containsKey('app_is_dark')) {
+        final isDark = prefs.getBool('app_is_dark') ?? true;
+        themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+      }
+    } catch (_) {}
   }
 
-  void toggleTheme(bool dark) {
+  void toggleLanguage() async {
+    isArabic = !isArabic;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('app_is_arabic', isArabic);
+    } catch (_) {}
+  }
+
+  void toggleTheme(bool dark) async {
     themeMode = dark ? ThemeMode.dark : ThemeMode.light;
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('app_is_dark', dark);
+    } catch (_) {}
   }
 
   String t(String en, String ar) => isArabic ? ar : en;
@@ -944,7 +969,7 @@ class CleanLoginDialog extends StatefulWidget {
 class _CleanLoginDialogState extends State<CleanLoginDialog> {
   final _pinController = TextEditingController();
   final _passController = TextEditingController();
-  bool _stayLoggedIn = true; // الافتراضي مفعل
+  bool _stayLoggedIn = true;
   bool _loading = false;
   String? _error;
   bool _showRequestForm = false;
