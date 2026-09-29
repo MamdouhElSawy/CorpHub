@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/CorpHub/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="دليل الشركات والعملاء - CorpHub">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="CorpHub">
+
+  <title>دليل الشركات - CorpHub</title>
+
+  <!-- سكريبت الحماية: منع Inspect و F12 مع السماح بالنسخ -->
+  <script>
+    document.addEventListener('contextmenu', function (e) {
+      if (window.getSelection().toString().length > 0) {
+        return true;
+      }
+      e.preventDefault();
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (
+        e.key === 'F12' ||
+        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+        (e.ctrlKey && (e.key === 'U' || e.key === 'u'))
+      ) {
+        e.preventDefault();
+        return false;
+      }
+    });
+  </script>
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
