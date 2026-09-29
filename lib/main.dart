@@ -6,19 +6,27 @@ import 'package:url_launcher/url_launcher.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-  const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  var supabaseUrl = const String.fromEnvironment('SUPABASE_URL').trim();
+  final supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY').trim();
+
+  // تنظيف الرابط تلقائياً من أي شرطات أو مسارات زائدة
+  if (supabaseUrl.endsWith('/')) {
+    supabaseUrl = supabaseUrl.substring(0, supabaseUrl.length - 1);
+  }
+  if (supabaseUrl.endsWith('/rest/v1')) {
+    supabaseUrl = supabaseUrl.replaceAll('/rest/v1', '');
+  }
 
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
   runApp(const CorpHubApp());
 }
 
-// ----------------- إدارة اللغات والمظهر -----------------
+// ----------------- إدارة اللغات والمظهر وهيكل EGL -----------------
 class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
 
-  bool isArabic = false;
+  bool isArabic = false; // الأساسي إنجليزي بناء على طلبك
   ThemeMode themeMode = ThemeMode.dark;
 
   void toggleLanguage() {
@@ -31,7 +39,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  String t(String ar, String en) => isArabic ? ar : en;
+  String t(String en, String ar) => isArabic ? ar : en;
 }
 
 class CorpHubApp extends StatelessWidget {
@@ -43,29 +51,47 @@ class CorpHubApp extends StatelessWidget {
       animation: AppState.instance,
       builder: (context, _) {
         final state = AppState.instance;
+
+        // باليتة ألوان EGL الرسمية
+        const eglNavyDark = Color(0xFF0B192C);
+        const eglNavyCard = Color(0xFF1E3E62);
+        const eglBlueAccent = Color(0xFF008DDA);
+
         return MaterialApp(
-          title: state.isArabic ? 'دليل الشركات' : 'CorpHub',
+          title: state.isArabic ? 'دليل الشركات' : 'CorpHub - EGL',
           debugShowCheckedModeBanner: false,
           themeMode: state.themeMode,
           locale: Locale(state.isArabic ? 'ar' : 'en'),
           theme: ThemeData(
             brightness: Brightness.light,
-            scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-            primaryColor: const Color(0xFF0284C7),
+            scaffoldBackgroundColor: const Color(0xFFF4F6F9),
+            primaryColor: const Color(0xFF0B2545),
             cardColor: Colors.white,
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF0284C7),
+              primary: Color(0xFF0B2545),
+              secondary: Color(0xFF0077B6),
               surface: Colors.white,
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
             ),
           ),
           darkTheme: ThemeData(
             brightness: Brightness.dark,
-            scaffoldBackgroundColor: const Color(0xFF0F172A),
-            primaryColor: const Color(0xFF38BDF8),
-            cardColor: const Color(0xFF1E293B),
+            scaffoldBackgroundColor: eglNavyDark,
+            primaryColor: eglBlueAccent,
+            cardColor: eglNavyCard,
             colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF38BDF8),
-              surface: Color(0xFF1E293B),
+              primary: eglBlueAccent,
+              secondary: Color(0xFF41B06E),
+              surface: eglNavyCard,
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: const Color(0xFF132A46),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
             ),
           ),
           home: const MainHomeScreen(),
@@ -139,66 +165,70 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.language),
-              title: Text(s.t('اللغة: العربية', 'Language: English')),
-              trailing: Switch(
-                value: s.isArabic,
-                onChanged: (_) {
-                  s.toggleLanguage();
-                  Navigator.pop(ctx);
-                },
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.dark_mode_outlined),
-              title: Text(s.t('الوضع الليلي (Dark Mode)', 'Dark Theme')),
-              trailing: Switch(
-                value: s.themeMode == ThemeMode.dark,
-                onChanged: (val) {
-                  s.toggleTheme(val);
-                  Navigator.pop(ctx);
-                },
-              ),
-            ),
-            const Divider(),
-            if (_currentUser == null)
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               ListTile(
-                leading: const Icon(Icons.login),
-                title: Text(s.t('تسجيل الدخول', 'Login')),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openLoginDialog();
-                },
-              )
-            else ...[
-              if (_currentUser!['role'] == 'admin')
-                ListTile(
-                  leading: const Icon(Icons.admin_panel_settings, color: Colors.blueAccent),
-                  title: Text(s.t('لوحة تحكم الإدارة', 'Admin Panel')),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => AdminPanelScreen(privacy: _privacy, onUpdate: _loadAll)),
-                    );
+                leading: const Icon(Icons.language),
+                title: Text(s.t('Language: English', 'اللغة: العربية')),
+                subtitle: Text(s.isArabic ? 'اضغط للتحويل إلى الإنجليزية' : 'Switch to Arabic'),
+                trailing: Switch(
+                  value: s.isArabic,
+                  onChanged: (val) {
+                    s.toggleLanguage();
+                    setModalState(() {});
+                    setState(() {});
                   },
                 ),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.redAccent),
-                title: Text('${s.t("خروج", "Logout")} (${_currentUser!["username"] ?? ""})'),
-                onTap: () {
-                  setState(() => _currentUser = null);
-                  Navigator.pop(ctx);
-                },
               ),
+              ListTile(
+                leading: const Icon(Icons.dark_mode_outlined),
+                title: Text(s.t('Dark Theme', 'الوضع الليلي')),
+                trailing: Switch(
+                  value: s.themeMode == ThemeMode.dark,
+                  onChanged: (val) {
+                    s.toggleTheme(val);
+                    setModalState(() {});
+                  },
+                ),
+              ),
+              const Divider(),
+              if (_currentUser == null)
+                ListTile(
+                  leading: const Icon(Icons.login),
+                  title: Text(s.t('Login', 'تسجيل الدخول')),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _openLoginDialog();
+                  },
+                )
+              else ...[
+                if (_currentUser!['role'] == 'admin')
+                  ListTile(
+                    leading: const Icon(Icons.admin_panel_settings, color: Color(0xFF008DDA)),
+                    title: Text(s.t('Admin Control Panel', 'لوحة تحكم الإدارة')),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => AdminPanelScreen(privacy: _privacy, onUpdate: _loadAll)),
+                      );
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.redAccent),
+                  title: Text('${s.t("Logout", "خروج")} (${_currentUser!["username"] ?? ""})'),
+                  onTap: () {
+                    setState(() => _currentUser = null);
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -207,6 +237,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   void _openLoginDialog() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => const CleanLoginDialog(),
     );
     if (res != null) {
@@ -218,11 +249,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     final s = AppState.instance;
     if (url == null || url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.t('لا توجد صورة مسجلة', 'No image registered'))),
+        SnackBar(content: Text(s.t('No image registered', 'لا توجد صورة مسجلة'))),
       );
       return;
     }
-    final msg = '${s.t("البطاقة الضريبية لشركة:", "Tax Card for:")} $companyName\n$url';
+    final msg = '${s.t("Tax Card for:", "البطاقة الضريبية لشركة:")} $companyName\n$url';
     final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
     if (await canLaunchUrl(wa)) {
       await launchUrl(wa, mode: LaunchMode.externalApplication);
@@ -244,11 +275,26 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(s.isArabic ? 'دليل الشركات' : 'CorpHub', style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        elevation: 1,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text('EGL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+            ),
+            const SizedBox(width: 10),
+            Text(s.t('CorpHub Directory', 'دليل الشركات'), style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            tooltip: s.t('الإعدادات', 'Settings'),
+            tooltip: s.t('Settings', 'الإعدادات'),
             onPressed: _openSettingsMenu,
           ),
           const SizedBox(width: 8),
@@ -259,11 +305,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.lock_outline, size: 64, color: Colors.orangeAccent),
+                  const Icon(Icons.lock_outline, size: 64, color: Color(0xFF008DDA)),
                   const SizedBox(height: 16),
-                  Text(s.t('التصفح مغلق لغير المسجلين', 'Browsing restricted to members'), style: const TextStyle(fontSize: 18)),
+                  Text(s.t('Browsing is restricted to authorized members', 'التصفح مغلق لغير المسجلين'), style: const TextStyle(fontSize: 18)),
                   const SizedBox(height: 12),
-                  ElevatedButton(onPressed: _openLoginDialog, child: Text(s.t('تسجيل الدخول', 'Login'))),
+                  ElevatedButton(onPressed: _openLoginDialog, child: Text(s.t('Login', 'تسجيل الدخول'))),
                 ],
               ),
             )
@@ -273,10 +319,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   padding: const EdgeInsets.all(16),
                   child: TextField(
                     decoration: InputDecoration(
-                      hintText: s.t('ابحث باسم الشركة...', 'Search company name...'),
+                      hintText: s.t('Search company name...', 'ابحث باسم الشركة...'),
                       prefixIcon: const Icon(Icons.search),
-                      filled: true,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                     ),
                     onChanged: (val) => setState(() => _searchQuery = val),
                   ),
@@ -285,7 +329,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
                       : filtered.isEmpty
-                          ? Center(child: Text(s.t('لا توجد بيانات مطابقة', 'No companies found')))
+                          ? Center(child: Text(s.t('No records found', 'لا توجد بيانات مسجلة')))
                           : ListView.separated(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               itemCount: filtered.length,
@@ -298,7 +342,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                   privacy: _privacy,
                                   onShare: () => _shareOnWhatsApp(
                                     comp['tax_card_url'],
-                                    s.isArabic ? (comp['name_ar'] ?? '') : (comp['name_en'] ?? ''),
+                                    s.isArabic ? (comp['name_ar'] ?? comp['name_en'] ?? '') : (comp['name_en'] ?? comp['name_ar'] ?? ''),
                                   ),
                                 );
                               },
@@ -310,7 +354,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 }
 
-// ----------------- كارت الشركة -----------------
+// ----------------- كارت الشركة بتصميم EGL -----------------
 class CompanyCard extends StatelessWidget {
   final Map<String, dynamic> company;
   final bool isLoggedIn;
@@ -328,7 +372,7 @@ class CompanyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
-    final name = s.isArabic ? (company['name_ar'] ?? '') : (company['name_en'] ?? '');
+    final name = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
 
     final showTax = isLoggedIn || (privacy['public_show_tax_card'] ?? false);
     final showPhones = isLoggedIn || (privacy['public_show_phones'] ?? false);
@@ -344,13 +388,14 @@ class CompanyCard extends StatelessWidget {
     final contacts = (company['company_contacts'] as List? ?? []);
 
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: ExpansionTile(
         leading: CircleAvatar(
-          backgroundColor: Theme.of(context).primaryColor.withAlpha(30),
-          child: Icon(Icons.business, color: Theme.of(context).primaryColor),
+          backgroundColor: Theme.of(context).primaryColor.withOpacity(0.15),
+          child: Icon(Icons.corporate_fare, color: Theme.of(context).primaryColor),
         ),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
@@ -363,14 +408,14 @@ class CompanyCard extends StatelessWidget {
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
                         icon: const Icon(Icons.share, size: 16),
-                        label: Text(s.t('واتساب البطاقة', 'Share Tax Card')),
+                        label: Text(s.t('WhatsApp Card', 'واتساب البطاقة')),
                         onPressed: onShare,
                       ),
                       const SizedBox(width: 8),
                     ],
                     OutlinedButton.icon(
                       icon: const Icon(Icons.print, size: 16),
-                      label: Text(s.t('طباعة مخصصة', 'Selective Print')),
+                      label: Text(s.t('Selective Print', 'طباعة مخصصة')),
                       onPressed: () => showDialog(
                         context: context,
                         builder: (_) => SelectivePrintDialog(company: company),
@@ -380,24 +425,24 @@ class CompanyCard extends StatelessWidget {
                 ),
                 const Divider(height: 24),
                 if (addresses.isNotEmpty) ...[
-                  Text(s.t('📍 العناوين:', '📍 Addresses:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
+                  Text(s.t('📍 Addresses:', '📍 العناوين:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
                   const SizedBox(height: 6),
                   ...addresses.map((a) {
                     final isMail = a['type'] == 'mailing';
-                    final addrText = s.isArabic ? (a['address_ar'] ?? '') : (a['address_en'] ?? '');
+                    final addrText = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text('• [${isMail ? s.t("مراسلة", "Mailing") : s.t("تشغيل", "Operation")}]: $addrText'),
+                      child: Text('• [${isMail ? s.t("Mailing", "مراسلة") : s.t("Operation", "تشغيل")}]: $addrText'),
                     );
                   }),
                   const SizedBox(height: 12),
                 ],
                 if (contacts.isNotEmpty) ...[
-                  Text(s.t('👤 جهات الاتصال والأفراد:', '👤 Contacts:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
+                  Text(s.t('👤 Contacts & Representatives:', '👤 جهات الاتصال:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
                   const SizedBox(height: 6),
                   ...contacts.map((c) {
-                    final cName = s.isArabic ? (c['name_ar'] ?? '') : (c['name_en'] ?? '');
-                    final cRole = s.isArabic ? (c['role_ar'] ?? '') : (c['role_en'] ?? '');
+                    final cName = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
+                    final cRole = s.isArabic ? (c['role_ar'] ?? c['role_en'] ?? '') : (c['role_en'] ?? c['role_ar'] ?? '');
                     final phone = showPhones ? (c['phone'] ?? '') : '••••••••••';
 
                     return ListTile(
@@ -410,7 +455,7 @@ class CompanyCard extends StatelessWidget {
                               icon: const Icon(Icons.copy, size: 18),
                               onPressed: () {
                                 Clipboard.setData(ClipboardData(text: c['phone'] ?? ''));
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('تم النسخ', 'Copied'))));
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Copied to clipboard', 'تم النسخ'))));
                               },
                             )
                           : null,
@@ -426,7 +471,7 @@ class CompanyCard extends StatelessWidget {
   }
 }
 
-// ----------------- نافذة الدخول النظيفة -----------------
+// ----------------- نافذة الدخول مع دعم زر Enter -----------------
 class CleanLoginDialog extends StatefulWidget {
   const CleanLoginDialog({super.key});
 
@@ -446,15 +491,20 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
 
   void _login() async {
     final s = AppState.instance;
+    final pin = _pinController.text.trim();
+    final pass = _passController.text.trim();
+
+    if (pin.isEmpty || pass.isEmpty) {
+      setState(() => _error = s.t('Please enter both PIN and Password', 'برجاء إدخال الكود وكلمة المرور'));
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      final pin = _pinController.text.trim();
-      final pass = _passController.text.trim();
-
       final res = await Supabase.instance.client
           .from('app_users')
           .select()
@@ -463,7 +513,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
           .maybeSingle();
 
       if (res == null) {
-        setState(() => _error = s.t('كود الدخول غير صحيح', 'Invalid PIN code'));
+        setState(() => _error = s.t('Invalid PIN code', 'كود الدخول غير صحيح'));
       } else {
         if (res['is_first_login'] == true) {
           await Supabase.instance.client.from('app_users').update({
@@ -498,7 +548,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          content: Text(s.t('تم إرسال طلبك للإدارة، سيتم إرسال بيانات الدخول عبر الواتساب فور الموافقة.', 'Request sent. Credentials will be sent via WhatsApp once approved.')),
+          content: Text(s.t('Request submitted successfully. Credentials will be sent via WhatsApp.', 'تم إرسال طلبك للإدارة، سيتم إرسال بيانات الدخول عبر الواتساب.')),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
         ),
       );
@@ -510,14 +560,15 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
     final s = AppState.instance;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 420),
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _showRequestForm ? s.t('طلب انضمام جديد', 'Request Access') : s.t('تسجيل الدخول', 'Login'),
+              _showRequestForm ? s.t('Request New Access', 'طلب انضمام جديد') : s.t('Login', 'تسجيل الدخول'),
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
@@ -527,11 +578,12 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 keyboardType: TextInputType.number,
                 maxLength: 6,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 20, letterSpacing: 6, fontWeight: FontWeight.bold),
+                autofocus: true,
+                textInputAction: TextInputAction.next,
+                style: const TextStyle(fontSize: 20, letterSpacing: 4, fontWeight: FontWeight.bold),
                 decoration: InputDecoration(
                   counterText: '',
-                  hintText: s.t('كود الدخول (6 أرقام)', '6-Digit PIN'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  hintText: s.t('6-Digit PIN', 'كود الدخول (6 أرقام)'),
                 ),
               ),
               const SizedBox(height: 12),
@@ -539,50 +591,52 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 controller: _passController,
                 obscureText: true,
                 textAlign: TextAlign.center,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _login(), // الضغط على Enter ينفذ الدخول مباشرة
                 decoration: InputDecoration(
-                  hintText: s.t('كلمة المرور', 'Password'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  hintText: s.t('Password', 'كلمة المرور'),
                 ),
               ),
               const SizedBox(height: 16),
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13), textAlign: TextAlign.center),
                 ),
               SizedBox(
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    backgroundColor: const Color(0xFF008DDA),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: _loading ? null : _login,
-                  child: _loading ? const CircularProgressIndicator(color: Colors.black) : Text(s.t('تسجيل الدخول', 'Login')),
+                  child: _loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(s.t('Login', 'تسجيل الدخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
               const SizedBox(height: 12),
               TextButton(
                 onPressed: () => setState(() => _showRequestForm = true),
-                child: Text(s.t('طلب حساب مستخدم جديد', 'Request a new account')),
+                child: Text(s.t('Request a new account', 'طلب حساب مستخدم جديد')),
               ),
             ] else ...[
               TextField(
                 controller: _nameReqController,
+                textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
-                  hintText: s.t('الاسم بالكامل', 'Full Name'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  hintText: s.t('Full Name', 'الاسم بالكامل'),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _phoneReqController,
                 keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submitRequest(), // Enter يرسل الطلب مباشرة
                 decoration: InputDecoration(
-                  hintText: s.t('رقم الهاتف (واتساب)', 'WhatsApp Phone Number'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  hintText: s.t('WhatsApp Phone Number', 'رقم الهاتف (واتساب)'),
                 ),
               ),
               const SizedBox(height: 16),
@@ -591,17 +645,17 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 height: 48,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    backgroundColor: const Color(0xFF008DDA),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: _submitRequest,
-                  child: Text(s.t('إرسال الطلب للإدارة', 'Submit Request')),
+                  child: Text(s.t('Submit Request', 'إرسال الطلب')),
                 ),
               ),
               TextButton(
                 onPressed: () => setState(() => _showRequestForm = false),
-                child: Text(s.t('رجوع لتسجيل الدخول', 'Back to login')),
+                child: Text(s.t('Back to login', 'رجوع لتسجيل الدخول')),
               ),
             ],
           ],
@@ -611,7 +665,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   }
 }
 
-// ----------------- الطباعة الانتقائية مع إخفاء الأقسام الفارغة -----------------
+// ----------------- الطباعة الانتقائية -----------------
 class SelectivePrintDialog extends StatefulWidget {
   final Map<String, dynamic> company;
   const SelectivePrintDialog({super.key, required this.company});
@@ -638,7 +692,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
   void _executePrint() {
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppState.instance.t('تم إعداد التقرير المحدد للطباعة', 'Report ready for print'))),
+      SnackBar(content: Text(AppState.instance.t('Preparing selected document for printing...', 'تم تجهيز البيانات المحددة للطباعة'))),
     );
   }
 
@@ -649,7 +703,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
     final contacts = widget.company['company_contacts'] as List? ?? [];
 
     return AlertDialog(
-      title: Text(s.t('طباعة انتقائية', 'Selective Print')),
+      title: Text(s.t('Selective Print', 'طباعة مخصصة')),
       content: SizedBox(
         width: 450,
         child: SingleChildScrollView(
@@ -657,20 +711,20 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CheckboxListTile(
-                title: Text(s.t('اسم الشركة الرئيسي', 'Company Name')),
+                title: Text(s.t('Company Name', 'اسم الشركة الرئيسي')),
                 value: _incName,
                 onChanged: (v) => setState(() => _incName = v ?? true),
               ),
               CheckboxListTile(
-                title: Text(s.t('صورة البطاقة الضريبية', 'Tax Card Image')),
+                title: Text(s.t('Tax Card Image', 'صورة البطاقة الضريبية')),
                 value: _incTaxCard,
                 onChanged: (v) => setState(() => _incTaxCard = v ?? false),
               ),
               const Divider(),
               if (addrs.isNotEmpty) ...[
-                Text(s.t('اختر العناوين المطلوب طباعتها:', 'Select addresses to print:'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(s.t('Select Addresses to Include:', 'اختر العناوين المطلوب طباعتها:'), style: const TextStyle(fontWeight: FontWeight.bold)),
                 ...addrs.map((a) {
-                  final text = s.isArabic ? (a['address_ar'] ?? '') : (a['address_en'] ?? '');
+                  final text = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
                   final id = a['id'].toString();
                   return CheckboxListTile(
                     dense: true,
@@ -682,9 +736,9 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
                 const Divider(),
               ],
               if (contacts.isNotEmpty) ...[
-                Text(s.t('اختر الأفراد المطلوب طباعتهم:', 'Select contacts to print:'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(s.t('Select Contacts to Include:', 'اختر جهات الاتصال:'), style: const TextStyle(fontWeight: FontWeight.bold)),
                 ...contacts.map((c) {
-                  final name = s.isArabic ? (c['name_ar'] ?? '') : (c['name_en'] ?? '');
+                  final name = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
                   final id = c['id'].toString();
                   return CheckboxListTile(
                     dense: true,
@@ -699,8 +753,8 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.t('إلغاء', 'Cancel'))),
-        ElevatedButton(onPressed: _executePrint, child: Text(s.t('طباعة', 'Print'))),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.t('Cancel', 'إلغاء'))),
+        ElevatedButton(onPressed: _executePrint, child: Text(s.t('Print', 'طباعة'))),
       ],
     );
   }
@@ -764,7 +818,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     _fetchRequests();
 
     final phone = req['phone'].toString().replaceAll(RegExp(r'[^0-9]'), '');
-    final msg = 'مرحباً بك في دليل الشركات (CorpHub)!\nبيانات دخولك هي:\nPIN: $pin\nPassword: $pass';
+    final msg = 'Welcome to CorpHub!\nYour login details are:\nPIN: $pin\nPassword: $pass';
     final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
     if (await canLaunchUrl(waUri)) {
       await launchUrl(waUri, mode: LaunchMode.externalApplication);
@@ -776,39 +830,39 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     final s = AppState.instance;
 
     return Scaffold(
-      appBar: AppBar(title: Text(s.t('لوحة تحكم الإدارة', 'Admin Panel'))),
+      appBar: AppBar(title: Text(s.t('Admin Control Panel', 'لوحة تحكم الإدارة'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(s.t('إعدادات إخفاء وإظهار الأعمدة لغير المسجلين:', 'Column Privacy for Non-Logged Users:'),
+          Text(s.t('Field Visibility for Non-Logged Users:', 'إعدادات إخفاء وإظهار الأعمدة لغير المسجلين:'),
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 8),
           SwitchListTile(
-            title: Text(s.t('السماح بالتصفح العام (فتح/قفل)', 'Allow Public Browsing')),
+            title: Text(s.t('Allow Public Browsing', 'السماح بالتصفح العام')),
             value: widget.privacy['allow_public_read'] ?? true,
             onChanged: (v) => _toggleSetting('allow_public_read', v),
           ),
           SwitchListTile(
-            title: Text(s.t('إظهار صورة البطاقة الضريبية', 'Show Tax Card')),
+            title: Text(s.t('Show Tax Card Image', 'إظهار صورة البطاقة الضريبية')),
             value: widget.privacy['public_show_tax_card'] ?? false,
             onChanged: (v) => _toggleSetting('public_show_tax_card', v),
           ),
           SwitchListTile(
-            title: Text(s.t('إظهار أرقام الهواتف', 'Show Phone Numbers')),
+            title: Text(s.t('Show Phone Numbers', 'إظهار أرقام الهواتف')),
             value: widget.privacy['public_show_phones'] ?? false,
             onChanged: (v) => _toggleSetting('public_show_phones', v),
           ),
           SwitchListTile(
-            title: Text(s.t('إظهار عناوين التشغيل والمصانع', 'Show Operation Addresses')),
+            title: Text(s.t('Show Operation / Factory Addresses', 'إظهار عناوين التشغيل والمصانع')),
             value: widget.privacy['public_show_operation_addresses'] ?? false,
             onChanged: (v) => _toggleSetting('public_show_operation_addresses', v),
           ),
           const Divider(height: 32),
-          Text(s.t('طلبات الانضمام المعلقة (${_requests.length})', 'Pending Access Requests (${_requests.length})'),
+          Text(s.t('Pending Access Requests (${_requests.length})', 'طلبات الانضمام المعلقة (${_requests.length})'),
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 8),
           if (_requests.isEmpty)
-            Text(s.t('لا توجد طلبات معلقة حالياً', 'No pending requests'))
+            Text(s.t('No pending requests found', 'لا توجد طلبات معلقة حالياً'))
           else
             ..._requests.map((r) => Card(
                   child: ListTile(
@@ -817,7 +871,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     trailing: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
                       icon: const Icon(Icons.check, size: 16),
-                      label: Text(s.t('قبول وإرسال واتساب', 'Approve & WhatsApp')),
+                      label: Text(s.t('Approve & WhatsApp', 'قبول وإرسال واتساب')),
                       onPressed: () => _approveRequest(r),
                     ),
                   ),
