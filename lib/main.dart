@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -24,12 +23,12 @@ void main() async {
   runApp(const CorpHubApp());
 }
 
-// ----------------- إدارة اللغات والمظهر وهيكل EGL -----------------
+// ----------------- إدارة اللغات والمظهر -----------------
 class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
 
-  bool isArabic = false; // الأساسي إنجليزي
+  bool isArabic = false;
   ThemeMode themeMode = ThemeMode.dark;
 
   void toggleLanguage() {
@@ -145,7 +144,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     try {
       final res = await Supabase.instance.client
           .from('companies')
-          .select('*, company_addresses(*), company_contacts(*), related_companies(*)')
+          .select('*, company_addresses(*), company_contacts(*)')
           .order('created_at', ascending: false);
       _companies = List<Map<String, dynamic>>.from(res);
     } catch (_) {}
@@ -251,7 +250,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   void _openAddEditCompanyDialog([Map<String, dynamic>? company]) async {
     final res = await showDialog<bool>(
       context: context,
-      builder: (_) => AddEditCompanyDialog(company: company),
+      barrierDismissible: false,
+      builder: (_) => AdvancedCompanyDialog(company: company),
     );
     if (res == true) _loadAll();
   }
@@ -290,16 +290,17 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         elevation: 1,
         title: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-                borderRadius: BorderRadius.circular(6),
+            Image.network(
+              'https://www.eglegypt.com/wp-content/uploads/2021/04/EGL-Logo-white.png',
+              height: 34,
+              errorBuilder: (_, __, ___) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFF008DDA), borderRadius: BorderRadius.circular(6)),
+                child: const Text('EGL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
               ),
-              child: const Text('EGL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
             ),
-            const SizedBox(width: 10),
-            Text(s.t('CorpHub Directory', 'دليل الشركات'), style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(width: 12),
+            Text(s.t('CorpHub Directory', 'دليل الشركات'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           ],
         ),
         actions: [
@@ -378,7 +379,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 }
 
-// ----------------- كارت الشركة مع زر التعديل للمصرح لهم -----------------
+// ----------------- كارت عرض الشركة -----------------
 class CompanyCard extends StatelessWidget {
   final Map<String, dynamic> company;
   final bool isLoggedIn;
@@ -509,20 +510,23 @@ class CompanyCard extends StatelessWidget {
   }
 }
 
-// ----------------- نافذة إضافة وتعديل شركة يدوياً (لـ Editor و Admin) -----------------
-class AddEditCompanyDialog extends StatefulWidget {
+// ----------------- استمارة إضافة وتعديل الشركة المطورة والشاملة -----------------
+class AdvancedCompanyDialog extends StatefulWidget {
   final Map<String, dynamic>? company;
-  const AddEditCompanyDialog({super.key, this.company});
+  const AdvancedCompanyDialog({super.key, this.company});
 
   @override
-  State<AddEditCompanyDialog> createState() => _AddEditCompanyDialogState();
+  State<AdvancedCompanyDialog> createState() => _AdvancedCompanyDialogState();
 }
 
-class _AddEditCompanyDialogState extends State<AddEditCompanyDialog> {
+class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   final _nameEn = TextEditingController();
   final _nameAr = TextEditingController();
   final _taxCardUrl = TextEditingController();
   bool _saving = false;
+
+  final List<Map<String, dynamic>> _addresses = [];
+  final List<Map<String, dynamic>> _contacts = [];
 
   @override
   void initState() {
@@ -531,29 +535,98 @@ class _AddEditCompanyDialogState extends State<AddEditCompanyDialog> {
       _nameEn.text = widget.company!['name_en'] ?? '';
       _nameAr.text = widget.company!['name_ar'] ?? '';
       _taxCardUrl.text = widget.company!['tax_card_url'] ?? '';
+
+      final rawAddrs = widget.company!['company_addresses'] as List? ?? [];
+      for (var a in rawAddrs) {
+        _addresses.add({
+          'type': a['type'] ?? 'mailing',
+          'en': TextEditingController(text: a['address_en'] ?? ''),
+          'ar': TextEditingController(text: a['address_ar'] ?? ''),
+        });
+      }
+
+      final rawContacts = widget.company!['company_contacts'] as List? ?? [];
+      for (var c in rawContacts) {
+        _contacts.add({
+          'name_en': TextEditingController(text: c['name_en'] ?? ''),
+          'name_ar': TextEditingController(text: c['name_ar'] ?? ''),
+          'role': TextEditingController(text: c['role_en'] ?? c['role_ar'] ?? ''),
+          'phone': TextEditingController(text: c['phone'] ?? ''),
+        });
+      }
+    } else {
+      // إعطاء حقل افتراضي لسهولة الإدخال
+      _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController()});
+      _contacts.add({'name_en': TextEditingController(), 'name_ar': TextEditingController(), 'role': TextEditingController(), 'phone': TextEditingController()});
     }
   }
 
-  void _save() async {
+  void _saveAll() async {
     final s = AppState.instance;
-    if (_nameEn.text.trim().isEmpty && _nameAr.text.trim().isEmpty) return;
+    final en = _nameEn.text.trim();
+    final ar = _nameAr.text.trim();
+
+    if (en.isEmpty && ar.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Please enter at least one company name', 'برجاء كتابة اسم الشركة'))));
+      return;
+    }
 
     setState(() => _saving = true);
-    final data = {
-      'name_en': _nameEn.text.trim(),
-      'name_ar': _nameAr.text.trim(),
-      'tax_card_url': _taxCardUrl.text.trim().isEmpty ? null : _taxCardUrl.text.trim(),
-    };
 
     try {
+      final compData = {
+        'name_en': en.isEmpty ? null : en,
+        'name_ar': ar.isEmpty ? null : ar,
+        'tax_card_url': _taxCardUrl.text.trim().isEmpty ? null : _taxCardUrl.text.trim(),
+      };
+
+      String compId;
       if (widget.company == null) {
-        await Supabase.instance.client.from('companies').insert(data);
+        final res = await Supabase.instance.client.from('companies').insert(compData).select().single();
+        compId = res['id'];
       } else {
-        await Supabase.instance.client.from('companies').update(data).eq('id', widget.company!['id']);
+        compId = widget.company!['id'];
+        await Supabase.instance.client.from('companies').update(compData).eq('id', compId);
+        // مسح القديم لحفظ التعديلات الجديدة
+        await Supabase.instance.client.from('company_addresses').delete().eq('company_id', compId);
+        await Supabase.instance.client.from('company_contacts').delete().eq('company_id', compId);
       }
+
+      // حفظ العناوين
+      for (var a in _addresses) {
+        final aEn = (a['en'] as TextEditingController).text.trim();
+        final aAr = (a['ar'] as TextEditingController).text.trim();
+        if (aEn.isNotEmpty || aAr.isNotEmpty) {
+          await Supabase.instance.client.from('company_addresses').insert({
+            'company_id': compId,
+            'type': a['type'],
+            'address_en': aEn.isEmpty ? null : aEn,
+            'address_ar': aAr.isEmpty ? null : aAr,
+          });
+        }
+      }
+
+      // حفظ جهات الاتصال
+      for (var c in _contacts) {
+        final cEn = (c['name_en'] as TextEditingController).text.trim();
+        final cAr = (c['name_ar'] as TextEditingController).text.trim();
+        final role = (c['role'] as TextEditingController).text.trim();
+        final phone = (c['phone'] as TextEditingController).text.trim();
+        if (cEn.isNotEmpty || cAr.isNotEmpty || phone.isNotEmpty) {
+          await Supabase.instance.client.from('company_contacts').insert({
+            'company_id': compId,
+            'name_en': cEn.isEmpty ? null : cEn,
+            'name_ar': cAr.isEmpty ? null : cAr,
+            'role_en': role.isEmpty ? null : role,
+            'role_ar': role.isEmpty ? null : role,
+            'phone': phone.isEmpty ? null : phone,
+          });
+        }
+      }
+
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Database Error: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -562,44 +635,183 @@ class _AddEditCompanyDialogState extends State<AddEditCompanyDialog> {
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
-    final isNew = widget.company == null;
 
-    return AlertDialog(
-      title: Text(isNew ? s.t('Add New Company', 'إضافة شركة جديدة') : s.t('Edit Company', 'تعديل بيانات الشركة')),
-      content: SizedBox(
-        width: 450,
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        width: 650,
+        height: 700,
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: _nameEn,
-              decoration: InputDecoration(hintText: s.t('Company Name (English)', 'اسم الشركة بالإنجليزي')),
+            Row(
+              children: [
+                Icon(widget.company == null ? Icons.add_business : Icons.edit, color: const Color(0xFF008DDA)),
+                const SizedBox(width: 8),
+                Text(
+                  widget.company == null ? s.t('Register New Company', 'تسجيل شركة جديدة') : s.t('Edit Company Details', 'تعديل بيانات الشركة'),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _nameAr,
-              decoration: InputDecoration(hintText: s.t('Company Name (Arabic)', 'اسم الشركة بالعربي')),
+            const Divider(),
+            Expanded(
+              child: ListView(
+                children: [
+                  // بيانات الشركة الأساسية
+                  Text(s.t('1. Company Information', '١. بيانات الشركة الأساسية'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _nameEn,
+                          decoration: InputDecoration(labelText: s.t('Name (English)', 'الاسم بالإنجليزية'), prefixIcon: const Icon(Icons.language)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _nameAr,
+                          decoration: InputDecoration(labelText: s.t('Name (Arabic)', 'الاسم بالعربية'), prefixIcon: const Icon(Icons.translate)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _taxCardUrl,
+                    decoration: InputDecoration(labelText: s.t('Tax Card Image URL', 'رابط صورة البطاقة الضريبية'), prefixIcon: const Icon(Icons.image)),
+                  ),
+
+                  const SizedBox(height: 24),
+                  // العناوين
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(s.t('2. Branch & Operating Addresses', '٢. العناوين والمقرات'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
+                      TextButton.icon(
+                        icon: const Icon(Icons.add_location_alt, size: 18),
+                        label: Text(s.t('Add Address', 'إضافة عنوان')),
+                        onPressed: () => setState(() => _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController()})),
+                      ),
+                    ],
+                  ),
+                  ..._addresses.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final a = entry.value;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                DropdownButton<String>(
+                                  value: a['type'],
+                                  items: [
+                                    DropdownMenuItem(value: 'mailing', child: Text(s.t('Mailing / Headquarter', 'عنوان مراسلة / مقر'))),
+                                    DropdownMenuItem(value: 'operation', child: Text(s.t('Operation / Factory', 'عنوان تشغيل / مصنع'))),
+                                  ],
+                                  onChanged: (v) => setState(() => a['type'] = v!),
+                                ),
+                                const Spacer(),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                  onPressed: () => setState(() => _addresses.removeAt(idx)),
+                                ),
+                              ],
+                            ),
+                            TextField(
+                              controller: a['en'],
+                              decoration: InputDecoration(labelText: s.t('Address (English)', 'العنوان بالإنجليزي')),
+                            ),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: a['ar'],
+                              decoration: InputDecoration(labelText: s.t('Address (Arabic)', 'العنوان بالعربي')),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+
+                  const SizedBox(height: 24),
+                  // جهات الاتصال
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(s.t('3. Contact Persons & Reps', '٣. مسؤولو التواصل'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
+                      TextButton.icon(
+                        icon: const Icon(Icons.person_add, size: 18),
+                        label: Text(s.t('Add Contact', 'إضافة مسؤول')),
+                        onPressed: () => setState(() => _contacts.add({
+                          'name_en': TextEditingController(),
+                          'name_ar': TextEditingController(),
+                          'role': TextEditingController(),
+                          'phone': TextEditingController(),
+                        })),
+                      ),
+                    ],
+                  ),
+                  ..._contacts.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final c = entry.value;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(child: TextField(controller: c['name_en'], decoration: InputDecoration(labelText: s.t('Name (EN)', 'الاسم (EN)')))),
+                                const SizedBox(width: 8),
+                                Expanded(child: TextField(controller: c['name_ar'], decoration: InputDecoration(labelText: s.t('Name (AR)', 'الاسم (عربي)')))),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                  onPressed: () => setState(() => _contacts.removeAt(idx)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Expanded(child: TextField(controller: c['role'], decoration: InputDecoration(labelText: s.t('Position / Role', 'المسمى الوظيفي')))),
+                                const SizedBox(width: 8),
+                                Expanded(child: TextField(controller: c['phone'], decoration: InputDecoration(labelText: s.t('Phone / WhatsApp', 'الهاتف / واتساب')))),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _taxCardUrl,
-              decoration: InputDecoration(hintText: s.t('Tax Card Image URL', 'رابط صورة البطاقة الضريبية')),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
+                onPressed: _saving ? null : _saveAll,
+                child: _saving ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Save Company Record', 'حفظ بيانات الشركة كاملة'), style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.t('Cancel', 'إلغاء'))),
-        ElevatedButton(
-          onPressed: _saving ? null : _save,
-          child: _saving ? const CircularProgressIndicator() : Text(s.t('Save', 'حفظ')),
-        ),
-      ],
     );
   }
 }
 
-// ----------------- نافذة الدخول مع دعم Enter -----------------
+// ----------------- نافذة الدخول مع التحقق الصارم من الباسورد -----------------
 class CleanLoginDialog extends StatefulWidget {
   const CleanLoginDialog({super.key});
 
@@ -643,15 +855,25 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
       if (res == null) {
         setState(() => _error = s.t('Invalid PIN code', 'كود الدخول غير صحيح'));
       } else {
+        // التحقق من الباسورد
         if (res['is_first_login'] == true) {
+          // تثبيت الباسورد لأول مرة
           await Supabase.instance.client.from('app_users').update({
             'password_hash': pass,
             'is_first_login': false,
             'username': 'Admin',
           }).eq('id', res['id']);
           res['username'] = 'Admin';
+          res['password_hash'] = pass;
+          if (mounted) Navigator.pop(context, res);
+        } else {
+          // التحقق من تطابق الباسورد المحفوظ
+          if (res['password_hash'] != pass) {
+            setState(() => _error = s.t('Incorrect Password', 'كلمة المرور غير صحيحة'));
+          } else {
+            if (mounted) Navigator.pop(context, res);
+          }
         }
-        if (mounted) Navigator.pop(context, res);
       }
     } catch (e) {
       setState(() => _error = e.toString());
@@ -892,7 +1114,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
   }
 }
 
-// ----------------- لوحة تحكم الأدمن الشاملة (تبويبات: إكسيل - يوزرات - خصوصية - طلبات) -----------------
+// ----------------- لوحة تحكم الأدمن -----------------
 class AdminPanelScreen extends StatefulWidget {
   final Map<String, bool> privacy;
   final VoidCallback onUpdate;
@@ -955,7 +1177,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     sheet.appendRow([
       TextCellValue('Company_Name_EN'),
       TextCellValue('Company_Name_AR'),
-      TextCellValue('Address_Type'), // mailing or operation
+      TextCellValue('Address_Type'),
       TextCellValue('Address_EN'),
       TextCellValue('Address_AR'),
       TextCellValue('Contact_Name_EN'),
@@ -965,7 +1187,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('Tax_Card_URL'),
     ]);
 
-    // مثال توضيحي
     sheet.appendRow([
       TextCellValue('EGL Logistics'),
       TextCellValue('المصرية للخدمات اللوجستية'),
@@ -1097,7 +1318,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
           if (nameEn.isEmpty && nameAr.isEmpty) continue;
 
-          // إضافة أو جلب الشركة
           var comp = await Supabase.instance.client
               .from('companies')
               .select()
@@ -1119,7 +1339,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             }
           }
 
-          // إضافة العنوان
           if ((addrEn != null && addrEn.isNotEmpty) || (addrAr != null && addrAr.isNotEmpty)) {
             await Supabase.instance.client.from('company_addresses').insert({
               'company_id': compId,
@@ -1129,7 +1348,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             });
           }
 
-          // إضافة جهة الاتصال
           if ((contNameEn != null && contNameEn.isNotEmpty) || (contNameAr != null && contNameAr.isNotEmpty)) {
             await Supabase.instance.client.from('company_contacts').insert({
               'company_id': compId,
@@ -1283,7 +1501,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           : TabBarView(
               controller: _tabController,
               children: [
-                // 1. تبويب الإكسيل
+                // 1. الإكسيل
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
@@ -1293,7 +1511,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       child: ListTile(
                         leading: const Icon(Icons.download, color: Colors.blueAccent),
                         title: Text(s.t('Download Excel Template (template.xlsx)', 'تحميل القالب الفارغ (template.xlsx)')),
-                        subtitle: Text(s.t('Download template with predefined columns', 'ملف فارغ جاهز بالأعمدة المطلوبة لملء بيانات الشركات')),
+                        subtitle: Text(s.t('Download template with predefined columns', 'ملف فارغ جاهز بالأعمدة المطلوبة')),
                         trailing: ElevatedButton(onPressed: _downloadTemplate, child: Text(s.t('Download', 'تحميل'))),
                       ),
                     ),
@@ -1301,7 +1519,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       child: ListTile(
                         leading: const Icon(Icons.file_download, color: Colors.teal),
                         title: Text(s.t('Export Current Data to Excel', 'تنزيل الداتا الحالية في إكسيل للتعديل')),
-                        subtitle: Text(s.t('Download all stored companies and contacts to edit them on your PC', 'تنزيل كامل الشركات والعناوين لتعديلها ثم إعادة رفعها')),
+                        subtitle: Text(s.t('Download all stored companies and contacts to edit them on your PC', 'تنزيل كامل الشركات لتعديلها ثم إعادة رفعها')),
                         trailing: ElevatedButton(onPressed: _exportCurrentData, child: Text(s.t('Export', 'تصدير'))),
                       ),
                     ),
@@ -1354,7 +1572,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 2. تبويب إدارة المستخدمين
+                // 2. إدارة المستخدمين
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
@@ -1416,7 +1634,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 3. تبويب الخصوصية
+                // 3. الخصوصية
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
@@ -1445,7 +1663,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 4. تبويب طلبات الانضمام
+                // 4. طلبات الانضمام
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
