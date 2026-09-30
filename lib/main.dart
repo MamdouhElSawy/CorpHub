@@ -197,6 +197,58 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     return r == 'admin' || r == 'editor';
   }
 
+  // دالة مسح شركة واحدة منفصلة
+  Future<void> _deleteSingleCompany(Map<String, dynamic> company) async {
+    final s = AppState.instance;
+    final name = s.isArabic
+        ? (company['name_ar'] ?? company['name_en'] ?? '')
+        : (company['name_en'] ?? company['name_ar'] ?? '');
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.t('Delete Company', 'حذف الشركة')),
+        content: Text(
+          s.t(
+            'Are you sure you want to delete "$name" and all its associated addresses and contacts?',
+            'هل أنت متأكد من حذف شركة "$name" وجميع عناوينها وجهات الاتصال الخاصة بها؟',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(s.t('Cancel', 'إلغاء')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.t('Delete', 'حذف')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _loading = true);
+      try {
+        final compId = company['id'];
+        await Supabase.instance.client.from('company_contacts').delete().eq('company_id', compId);
+        await Supabase.instance.client.from('company_addresses').delete().eq('company_id', compId);
+        await Supabase.instance.client.from('companies').delete().eq('id', compId);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(s.t('Company deleted successfully', 'تم حذف الشركة بنجاح'))),
+        );
+        _loadAll();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+        setState(() => _loading = false);
+      }
+    }
+  }
+
   void _openChangePasswordDialog() {
     final s = AppState.instance;
     final oldPassCtrl = TextEditingController();
@@ -411,7 +463,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     final res = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AdvancedCompanyDialog(company: company),
+      builder: (_) => AdvancedCompanyDialog(
+        company: company,
+        onDeleteRequested: company != null ? () => _deleteSingleCompany(company) : null,
+      ),
     );
     if (res == true) _loadAll();
   }
@@ -525,6 +580,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                   canEdit: _canEdit,
                                   privacy: _privacy,
                                   onEdit: () => _openAddEditCompanyDialog(comp),
+                                  onDelete: () => _deleteSingleCompany(comp),
                                   onShare: () => _shareOnWhatsApp(
                                     comp['tax_card_url'],
                                     s.isArabic ? (comp['name_ar'] ?? comp['name_en'] ?? '') : (comp['name_en'] ?? comp['name_ar'] ?? ''),
@@ -539,13 +595,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 }
 
-// ----------------- كارت عرض الشركة -----------------
+// ----------------- كارت عرض الشركة مع زري التعديل والحذف -----------------
 class CompanyCard extends StatelessWidget {
   final Map<String, dynamic> company;
   final bool isLoggedIn;
   final bool canEdit;
   final Map<String, bool> privacy;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
   final VoidCallback onShare;
 
   const CompanyCard({
@@ -555,6 +612,7 @@ class CompanyCard extends StatelessWidget {
     required this.canEdit,
     required this.privacy,
     required this.onEdit,
+    required this.onDelete,
     required this.onShare,
   });
 
@@ -587,12 +645,18 @@ class CompanyCard extends StatelessWidget {
         title: Row(
           children: [
             Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-            if (canEdit)
+            if (canEdit) ...[
               IconButton(
                 icon: const Icon(Icons.edit, size: 20, color: Color(0xFF008DDA)),
                 tooltip: s.t('Edit Company', 'تعديل بيانات الشركة'),
                 onPressed: onEdit,
               ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                tooltip: s.t('Delete Company', 'حذف الشركة نهائياً'),
+                onPressed: onDelete,
+              ),
+            ],
           ],
         ),
         children: [
@@ -670,10 +734,12 @@ class CompanyCard extends StatelessWidget {
   }
 }
 
-// ----------------- استمارة إضافة وتعديل الشركة -----------------
+// ----------------- استمارة إضافة وتعديل الشركة مع زر حذف الريكورد -----------------
 class AdvancedCompanyDialog extends StatefulWidget {
   final Map<String, dynamic>? company;
-  const AdvancedCompanyDialog({super.key, this.company});
+  final VoidCallback? onDeleteRequested;
+
+  const AdvancedCompanyDialog({super.key, this.company, this.onDeleteRequested});
 
   @override
   State<AdvancedCompanyDialog> createState() => _AdvancedCompanyDialogState();
@@ -796,7 +862,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 650,
-        height: 700,
+        height: 720,
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
@@ -938,6 +1004,28 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                       ),
                     );
                   }),
+
+                  if (widget.company != null && widget.onDeleteRequested != null) ...[
+                    const Divider(height: 36),
+                    ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: const BorderSide(color: Colors.redAccent),
+                      ),
+                      leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                      title: Text(
+                        s.t('Delete this company', 'حذف هذه الشركة نهائياً'),
+                        style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        s.t('Permanently remove this record and its details', 'إزالة هذه الشركة وعناوينها وأرقامها من قاعدة البيانات'),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onDeleteRequested!();
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
