@@ -31,7 +31,7 @@ class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
 
-  bool isArabic = true; // الافتراضي عربي لكل المستخدمين والزوار الجدد
+  bool isArabic = true;
   ThemeMode themeMode = ThemeMode.dark;
 
   Future<void> loadSavedPreferences() async {
@@ -56,12 +56,12 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void toggleTheme(bool dark) async {
-    themeMode = dark ? ThemeMode.dark : ThemeMode.light;
+  void toggleTheme() async {
+    themeMode = themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('app_is_dark', dark);
+      await prefs.setBool('app_is_dark', themeMode == ThemeMode.dark);
     } catch (_) {}
   }
 
@@ -351,96 +351,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  void _openSettingsMenu() {
-    final s = AppState.instance;
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.language),
-                title: Text(s.t('Language: English', 'اللغة: العربية')),
-                subtitle: Text(s.isArabic ? 'اضغط للتحويل إلى الإنجليزية' : 'Switch to Arabic'),
-                trailing: Switch(
-                  value: s.isArabic,
-                  onChanged: (val) {
-                    s.toggleLanguage();
-                    setModalState(() {});
-                    setState(() {});
-                  },
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.dark_mode_outlined),
-                title: Text(s.t('Dark Theme', 'الوضع الليلي')),
-                trailing: Switch(
-                  value: s.themeMode == ThemeMode.dark,
-                  onChanged: (val) {
-                    s.toggleTheme(val);
-                    setModalState(() {});
-                  },
-                ),
-              ),
-              const Divider(),
-              if (_currentUser == null)
-                ListTile(
-                  leading: const Icon(Icons.login),
-                  title: Text(s.t('Login', 'تسجيل الدخول')),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _openLoginDialog();
-                  },
-                )
-              else ...[
-                if (_currentUser!['role'] == 'admin')
-                  ListTile(
-                    leading: const Icon(Icons.admin_panel_settings, color: Color(0xFF008DDA)),
-                    title: Text(s.t('Admin Control Panel', 'لوحة تحكم الإدارة')),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => AdminPanelScreen(
-                            privacy: _privacy,
-                            onUpdate: _loadAll,
-                            companies: _companies,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ListTile(
-                  leading: const Icon(Icons.password, color: Colors.orangeAccent),
-                  title: Text(s.t('Change Password', 'تغيير كلمة المرور')),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _openChangePasswordDialog();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.redAccent),
-                  title: Text('${s.t("Logout", "خروج")} (${_currentUser!["username"] ?? ""}) - ${_currentUser!["role"]?.toString().toUpperCase()}'),
-                  onTap: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.remove('saved_user_session');
-                    setState(() => _currentUser = null);
-                    Navigator.pop(ctx);
-                  },
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   void _openLoginDialog() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -513,11 +423,131 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: s.t('Settings', 'الإعدادات'),
-            onPressed: _openSettingsMenu,
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
+            onPressed: () => s.toggleLanguage(),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.language, size: 18),
+                const SizedBox(width: 4),
+                Text(s.isArabic ? 'English' : 'عربي', style: const TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
           ),
+          IconButton(
+            icon: Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
+            tooltip: s.t('Toggle Theme', 'تبديل المظهر'),
+            onPressed: () => s.toggleTheme(),
+          ),
+          const SizedBox(width: 6),
+          if (!isLoggedIn)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF008DDA),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                icon: const Icon(Icons.login, size: 18),
+                label: Text(s.t('Login', 'تسجيل الدخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: _openLoginDialog,
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: PopupMenuButton<String>(
+                tooltip: s.t('Account Menu', 'قائمة الحساب'),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(
+                        radius: 12,
+                        backgroundColor: const Color(0xFF008DDA),
+                        child: Text(
+                          (_currentUser!['username'] ?? 'U')[0].toString().toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _currentUser!['username'] ?? 'User',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const Icon(Icons.arrow_drop_down, size: 18),
+                    ],
+                  ),
+                ),
+                onSelected: (val) async {
+                  if (val == 'admin') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AdminPanelScreen(
+                          privacy: _privacy,
+                          onUpdate: _loadAll,
+                          companies: _companies,
+                        ),
+                      ),
+                    );
+                  } else if (val == 'password') {
+                    _openChangePasswordDialog();
+                  } else if (val == 'logout') {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove('saved_user_session');
+                    setState(() => _currentUser = null);
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  if (_currentUser!['role'] == 'admin')
+                    PopupMenuItem(
+                      value: 'admin',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.admin_panel_settings, color: Color(0xFF008DDA), size: 20),
+                          const SizedBox(width: 8),
+                          Text(s.t('Admin Panel', 'لوحة تحكم الإدارة')),
+                        ],
+                      ),
+                    ),
+                  PopupMenuItem(
+                    value: 'password',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.password, color: Colors.orangeAccent, size: 20),
+                        const SizedBox(width: 8),
+                        Text(s.t('Change Password', 'تغيير كلمة المرور')),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                        const SizedBox(width: 8),
+                        Text(s.t('Logout', 'تسجيل الخروج')),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(width: 8),
         ],
       ),
@@ -834,8 +864,11 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   final _nameEn = TextEditingController();
   final _nameAr = TextEditingController();
   final _taxCardUrl = TextEditingController();
-  bool _isGroup = false;
-  String? _parentCompanyId;
+
+  // نظام المجموعات الجديد
+  bool _partOfGroup = false;      // السويتش الأساسي (مستقلة أم ضمن مجموعة)
+  bool _isGroupMother = false;     // السويتش الفرعي (هل هي الشركة الأم؟)
+  String? _parentCompanyId;        // لو مش الأم، اختيار الشركة الأم
 
   bool _saving = false;
   bool _uploadingTaxCard = false;
@@ -850,8 +883,23 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       _nameEn.text = widget.company!['name_en'] ?? '';
       _nameAr.text = widget.company!['name_ar'] ?? '';
       _taxCardUrl.text = widget.company!['tax_card_url'] ?? '';
-      _isGroup = widget.company!['is_group'] == true;
-      _parentCompanyId = widget.company!['parent_company_id'];
+
+      final bool isGrp = widget.company!['is_group'] == true;
+      final String? pId = widget.company!['parent_company_id'];
+
+      if (isGrp) {
+        _partOfGroup = true;
+        _isGroupMother = true;
+        _parentCompanyId = null;
+      } else if (pId != null) {
+        _partOfGroup = true;
+        _isGroupMother = false;
+        _parentCompanyId = pId;
+      } else {
+        _partOfGroup = false;
+        _isGroupMother = false;
+        _parentCompanyId = null;
+      }
 
       final rawAddrs = widget.company!['company_addresses'] as List? ?? [];
       for (var a in rawAddrs) {
@@ -932,12 +980,16 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
     setState(() => _saving = true);
 
     try {
+      // ضبط بيانات المجموعة بدقة بناءً على السويتشات
+      final bool finalIsGroup = _partOfGroup && _isGroupMother;
+      final String? finalParentId = (_partOfGroup && !_isGroupMother) ? _parentCompanyId : null;
+
       final compData = {
         'name_en': en.isEmpty ? null : en,
         'name_ar': ar.isEmpty ? null : ar,
         'tax_card_url': _taxCardUrl.text.trim().isEmpty ? null : _taxCardUrl.text.trim(),
-        'is_group': _isGroup,
-        'parent_company_id': _isGroup ? null : _parentCompanyId,
+        'is_group': finalIsGroup,
+        'parent_company_id': finalParentId,
       };
 
       String compId;
@@ -995,13 +1047,20 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
+    // استبعاد الشركة الحالية من قائمة الآباء المحتملين
     final potentialParents = widget.allCompanies.where((c) => c['id'] != widget.company?['id']).toList();
+
+    // البحث عن الشركات التابعة لو كانت هذه الشركة شركة أم ومسجلة بالفعل
+    final currentCompId = widget.company?['id'];
+    final subsidiaries = currentCompId != null
+        ? widget.allCompanies.where((c) => c['parent_company_id'] == currentCompId).toList()
+        : [];
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 680,
-        height: 750,
+        height: 760,
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
@@ -1062,6 +1121,8 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                     ],
                   ),
                   const SizedBox(height: 14),
+
+                  // ---------------- نظام التبعية والمجموعات المعدل ----------------
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -1071,37 +1132,88 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // السويتش الأساسي: مستقلة أم تابعة لمجموعة؟
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text(s.t('Is Parent / Holding Group?', 'هل هي شركة أم / مجموعة رئيسية؟')),
-                          value: _isGroup,
+                          title: Text(
+                            s.t('Part of Corporate Group?', 'هل الشركة تتبع أو تمثل مجموعة شركات؟'),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            _partOfGroup
+                                ? s.t('Group relation enabled', 'نظام المجموعات مفعل')
+                                : s.t('Independent company (Default)', 'شركة مستقلة بذاتها (الوضع الافتراضي)'),
+                            style: TextStyle(color: _partOfGroup ? const Color(0xFF008DDA) : Colors.grey, fontSize: 12),
+                          ),
+                          value: _partOfGroup,
                           onChanged: (val) {
                             setState(() {
-                              _isGroup = val;
-                              if (val) _parentCompanyId = null;
+                              _partOfGroup = val;
+                              if (!val) {
+                                _isGroupMother = false;
+                                _parentCompanyId = null;
+                              }
                             });
                           },
                         ),
-                        if (!_isGroup) ...[
-                          const SizedBox(height: 6),
-                          DropdownButtonFormField<String>(
-                            value: _parentCompanyId,
-                            decoration: InputDecoration(
-                              labelText: s.t('Subsidiary of (Select Parent)', 'شركة تابعة لـ (اختر الشركة الأم)'),
-                              border: const OutlineInputBorder(),
+                        // إذا تم تفعيل السويتش الأساسي: يظهر خيار تحديد هل هي أم أم تابعة
+                        if (_partOfGroup) ...[
+                          const Divider(),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              _isGroupMother
+                                  ? s.t('Role: Holding / Mother Group', 'الصفة: الشركة الأم / المجموعة الرئيسية')
+                                  : s.t('Role: Subsidiary Company', 'الصفة: شركة تابعة / فرع لمجموعة أخرى'),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            items: [
-                              DropdownMenuItem<String>(
-                                value: null,
-                                child: Text(s.t('-- None (Independent) --', '-- لا يوجد (شركة مستقلة) --')),
+                            subtitle: Text(
+                              _isGroupMother
+                                  ? s.t('This company owns or leads other subsidiaries', 'هذه الشركة هي الأصل ويتبع لها شركات أخرى')
+                                  : s.t('This company reports to a mother group', 'هذه الشركة تابعة لمجموعة قابضة'),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            value: _isGroupMother,
+                            onChanged: (val) {
+                              setState(() {
+                                _isGroupMother = val;
+                                if (val) _parentCompanyId = null;
+                              });
+                            },
+                          ),
+                          // الحالة 1: لو شركة فرعية -> يظهر الـ Combo box لاختيار الشركة الأم
+                          if (!_isGroupMother) ...[
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              value: _parentCompanyId,
+                              decoration: InputDecoration(
+                                labelText: s.t('Select Mother Group / Parent Company', 'اختر الشركة الأم / المجموعة المالكة'),
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.account_tree_outlined),
                               ),
-                              ...potentialParents.map((p) {
+                              items: potentialParents.map((p) {
                                 final pName = s.isArabic ? (p['name_ar'] ?? p['name_en'] ?? '') : (p['name_en'] ?? p['name_ar'] ?? '');
                                 return DropdownMenuItem<String>(value: p['id'].toString(), child: Text(pName));
-                              }),
-                            ],
-                            onChanged: (val) => setState(() => _parentCompanyId = val),
-                          ),
+                              }).toList(),
+                              onChanged: (val) => setState(() => _parentCompanyId = val),
+                            ),
+                          ]
+                          // الحالة 2: لو شركة أم -> عرض الشركات التابعة ليها حالياً لو وجدت
+                          else if (subsidiaries.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(s.t('Current Subsidiaries:', 'الشركات التابعة حالياً:'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber)),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: subsidiaries.map((sub) {
+                                final subName = s.isArabic ? (sub['name_ar'] ?? sub['name_en'] ?? '') : (sub['name_en'] ?? sub['name_ar'] ?? '');
+                                return Chip(
+                                  label: Text(subName, style: const TextStyle(fontSize: 11)),
+                                  backgroundColor: Colors.amber.withOpacity(0.15),
+                                );
+                              }).toList(),
+                            ),
+                          ],
                         ],
                       ],
                     ),
@@ -1624,7 +1736,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     widget.onUpdate();
   }
 
-  // 1. تحميل القالب مع عمود Map_URL لكل عنوان
   void _downloadTemplate() {
     var excel = Excel.createExcel();
     Sheet sheet = excel['CompaniesTemplate'];
@@ -1684,7 +1795,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
   }
 
-  // 2. تصدير كامل البيانات
   void _exportCurrentData() {
     var excel = Excel.createExcel();
     Sheet sheet = excel['CorpHub_Export'];
@@ -1771,7 +1881,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     launchUrl(Uri.parse(anchor), mode: LaunchMode.externalApplication);
   }
 
-  // 3. رفع الإكسيل مع نظام Two-Pass Import
   Future<void> _handleExcelUpload({required String mode}) async {
     final s = AppState.instance;
     final result = await FilePicker.platform.pickFiles(
@@ -1801,7 +1910,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         final rows = excel.tables[table]!.rows;
         if (rows.length <= 1) continue;
 
-        // Pass 1: إنشاء وتحديث الشركات والمقرات
+        // Pass 1: إنشاء وتحديث الشركات
         for (int i = 1; i < rows.length; i++) {
           final row = rows[i];
           if (row.isEmpty) continue;
@@ -1873,7 +1982,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           }
         }
 
-        // Pass 2: ربط الفروع بالأصول
+        // Pass 2: ربط الفروع بالأصل
         for (var link in pendingParentLinks) {
           final parentId = companyNameToId[link['parent_name']];
           if (parentId != null) {
@@ -2032,7 +2141,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           : TabBarView(
               controller: _tabController,
               children: [
-                // 1. الإكسيل
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
@@ -2102,8 +2210,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                   ],
                 ),
-
-                // 2. إدارة المستخدمين
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
@@ -2164,8 +2270,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     }),
                   ],
                 ),
-
-                // 3. الخصوصية
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
@@ -2193,8 +2297,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                   ],
                 ),
-
-                // 4. طلبات الانضمام
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
