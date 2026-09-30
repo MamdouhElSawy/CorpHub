@@ -31,7 +31,7 @@ class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
 
-  bool isArabic = true;
+  bool isArabic = true; // الافتراضي للزائر الجديد عربي
   ThemeMode themeMode = ThemeMode.dark;
 
   Future<void> loadSavedPreferences() async {
@@ -86,6 +86,11 @@ class CorpHubApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           themeMode: state.themeMode,
           locale: Locale(state.isArabic ? 'ar' : 'en'),
+          // دعم تغيير اتجاه الواجهة من اليمين للشمال للعربي (RTL / LTR)
+          supportedLocales: const [
+            Locale('ar', ''),
+            Locale('en', ''),
+          ],
           theme: ThemeData(
             brightness: Brightness.light,
             scaffoldBackgroundColor: const Color(0xFFF4F6F9),
@@ -108,7 +113,10 @@ class CorpHubApp extends StatelessWidget {
               surface: eglNavyCard,
             ),
           ),
-          home: const MainHomeScreen(),
+          home: Directionality(
+            textDirection: state.isArabic ? TextDirection.rtl : TextDirection.ltr,
+            child: const MainHomeScreen(),
+          ),
         );
       },
     );
@@ -409,13 +417,18 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         elevation: 1,
         title: Row(
           children: [
-            Image.network(
-              'https://www.eglegypt.com/wp-content/uploads/2021/04/EGL-Logo-white.png',
-              height: 34,
-              errorBuilder: (_, __, ___) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFF008DDA), borderRadius: BorderRadius.circular(6)),
-                child: const Text('EGL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+            // اللوجو الجديد مع تصميم متجاوب وآمن
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.network(
+                'https://www.eglegypt.com/wp-content/uploads/2022/05/EGL-Logo-2022-1536x708.jpg.webp',
+                height: 38,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: const Color(0xFF008DDA), borderRadius: BorderRadius.circular(6)),
+                  child: const Text('EGL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -423,6 +436,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           ],
         ),
         actions: [
+          // 1. زر تحويل اللغة
           TextButton(
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -438,12 +452,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ],
             ),
           ),
+          // 2. زر المظهر
           IconButton(
             icon: Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
             tooltip: s.t('Toggle Theme', 'تبديل المظهر'),
             onPressed: () => s.toggleTheme(),
           ),
           const SizedBox(width: 6),
+          // 3. منطقة تسجيل الدخول واسم المستخدم
           if (!isLoggedIn)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -497,10 +513,13 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => AdminPanelScreen(
-                          privacy: _privacy,
-                          onUpdate: _loadAll,
-                          companies: _companies,
+                        builder: (_) => Directionality(
+                          textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                          child: AdminPanelScreen(
+                            privacy: _privacy,
+                            onUpdate: _loadAll,
+                            companies: _companies,
+                          ),
                         ),
                       ),
                     );
@@ -865,10 +884,9 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   final _nameAr = TextEditingController();
   final _taxCardUrl = TextEditingController();
 
-  // نظام المجموعات الجديد
-  bool _partOfGroup = false;      // السويتش الأساسي (مستقلة أم ضمن مجموعة)
-  bool _isGroupMother = false;     // السويتش الفرعي (هل هي الشركة الأم؟)
-  String? _parentCompanyId;        // لو مش الأم، اختيار الشركة الأم
+  bool _partOfGroup = false;
+  bool _isGroupMother = false;
+  String? _parentCompanyId;
 
   bool _saving = false;
   bool _uploadingTaxCard = false;
@@ -939,16 +957,17 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
 
       setState(() => _uploadingTaxCard = true);
       final fileBytes = res.files.single.bytes!;
-      final ext = res.files.single.extension ?? 'png';
+      final ext = res.files.single.extension?.toLowerCase() ?? 'png';
       final fileName = 'tax_card_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final contentType = ext == 'pdf' ? 'application/pdf' : 'image/$ext';
 
-      await Supabase.instance.client.storage.from('tax_cards').uploadBinary(
+      await Supabase.instance.client.storage.from('tax-cards').uploadBinary(
             fileName,
             fileBytes,
-            fileOptions: FileOptions(upsert: true, contentType: 'image/$ext'),
+            fileOptions: FileOptions(upsert: true, contentType: contentType),
           );
 
-      final publicUrl = Supabase.instance.client.storage.from('tax_cards').getPublicUrl(fileName);
+      final publicUrl = Supabase.instance.client.storage.from('tax-cards').getPublicUrl(fileName);
       setState(() {
         _taxCardUrl.text = publicUrl;
       });
@@ -980,7 +999,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
     setState(() => _saving = true);
 
     try {
-      // ضبط بيانات المجموعة بدقة بناءً على السويتشات
       final bool finalIsGroup = _partOfGroup && _isGroupMother;
       final String? finalParentId = (_partOfGroup && !_isGroupMother) ? _parentCompanyId : null;
 
@@ -1047,10 +1065,8 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
-    // استبعاد الشركة الحالية من قائمة الآباء المحتملين
     final potentialParents = widget.allCompanies.where((c) => c['id'] != widget.company?['id']).toList();
 
-    // البحث عن الشركات التابعة لو كانت هذه الشركة شركة أم ومسجلة بالفعل
     final currentCompId = widget.company?['id'];
     final subsidiaries = currentCompId != null
         ? widget.allCompanies.where((c) => c['parent_company_id'] == currentCompId).toList()
@@ -1122,7 +1138,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                   ),
                   const SizedBox(height: 14),
 
-                  // ---------------- نظام التبعية والمجموعات المعدل ----------------
+                  // نظام التبعية والمجموعات
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -1132,7 +1148,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // السويتش الأساسي: مستقلة أم تابعة لمجموعة؟
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(
@@ -1156,7 +1171,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                             });
                           },
                         ),
-                        // إذا تم تفعيل السويتش الأساسي: يظهر خيار تحديد هل هي أم أم تابعة
                         if (_partOfGroup) ...[
                           const Divider(),
                           SwitchListTile(
@@ -1181,7 +1195,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                               });
                             },
                           ),
-                          // الحالة 1: لو شركة فرعية -> يظهر الـ Combo box لاختيار الشركة الأم
                           if (!_isGroupMother) ...[
                             const SizedBox(height: 8),
                             DropdownButtonFormField<String>(
@@ -1197,9 +1210,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                               }).toList(),
                               onChanged: (val) => setState(() => _parentCompanyId = val),
                             ),
-                          ]
-                          // الحالة 2: لو شركة أم -> عرض الشركات التابعة ليها حالياً لو وجدت
-                          else if (subsidiaries.isNotEmpty) ...[
+                          ] else if (subsidiaries.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             Text(s.t('Current Subsidiaries:', 'الشركات التابعة حالياً:'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber)),
                             Wrap(
