@@ -1,7 +1,8 @@
 {
   "name": "CorpHub Directory",
   "short_name": "CorpHub",
-  "start_url": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0B192C",
   "theme_color": "#008DDA",
