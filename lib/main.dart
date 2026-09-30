@@ -162,7 +162,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 
   void _setupRealtime() {
-    // مراقبة التغييرات في الشركات
     _companiesChannel = Supabase.instance.client
         .channel('public:companies_feed')
         .onPostgresChanges(
@@ -173,7 +172,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         )
         .subscribe();
 
-    // مراقبة فورية لبيانات المستخدم الحالي لجبر التحديث (Force Sync / Force Re-login)
     _userSessionChannel = Supabase.instance.client
         .channel('public:user_sync')
         .onPostgresChanges(
@@ -185,7 +183,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               final updatedId = payload.newRecord['id'] ?? payload.oldRecord['id'];
               if (updatedId == _currentUser!['id']) {
                 if (payload.eventType == PostgresChangeEvent.delete || payload.newRecord['is_active'] == false) {
-                  // طرد فوري لو اتحذف أو اتعطل
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.remove('saved_user_session');
                   if (mounted) {
@@ -195,7 +192,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     );
                   }
                 } else if (payload.eventType == PostgresChangeEvent.update) {
-                  // تحديث الرتبة والبيانات لحظياً دون تسجيل خروج
                   setState(() => _currentUser = Map<String, dynamic>.from(payload.newRecord));
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setString('saved_user_session', jsonEncode(_currentUser));
@@ -627,6 +623,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   onSelected: (val) async {
                     if (val == 'lang') {
                       s.toggleLanguage();
+                      setState(() {}); // تحديث فوري بدون ريفريش يدوي
                     } else if (val == 'theme') {
                       s.toggleTheme();
                     } else if (val == 'login') {
@@ -741,7 +738,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
                   ),
-                  onPressed: () => s.toggleLanguage(),
+                  onPressed: () {
+                    s.toggleLanguage();
+                    setState(() {}); // تحديث فوري للشاشة باللغة الجديدة
+                  },
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -2058,7 +2058,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   }
 }
 
-// ----------------- الطباعة الانتقائية -----------------
+// ----------------- الطباعة الانتقائية مع تفعيل الطباعة الحقيقية للمتصفح -----------------
 class SelectivePrintDialog extends StatefulWidget {
   final Map<String, dynamic> company;
   const SelectivePrintDialog({super.key, required this.company});
@@ -2084,9 +2084,8 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
 
   void _executePrint() {
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppState.instance.t('Preparing document for printing...', 'تم تجهيز البيانات المحددة للطباعة'))),
-    );
+    // تفعيل نافذة الطباعة الفعلية للمتصفح مباشرة
+    html.window.print();
   }
 
   @override
@@ -2153,7 +2152,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
   }
 }
 
-// ----------------- لوحة تحكم الأدمن والإكسيل المعدل مع تحكم كامل بالمستخدمين -----------------
+// ----------------- لوحة تحكم الأدمن -----------------
 class AdminPanelScreen extends StatefulWidget {
   final Map<String, bool> privacy;
   final VoidCallback onUpdate;
@@ -2250,16 +2249,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     } catch (_) {}
   }
 
-  void _toggleSetting(String key, bool val) async {
-    setState(() => widget.privacy[key] = val);
-    await Supabase.instance.client.from('system_settings').upsert({
-      'key': key,
-      'value': val,
-    });
-    widget.onUpdate();
-  }
-
-  // 1. إضافة مستخدم بكود يدوي
   void _openAddUserDialog() async {
     final s = AppState.instance;
     final userCtrl = TextEditingController();
@@ -2318,7 +2307,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
-  // 2. تعديل بيانات المستخدم بالكامل (اسم - كود يدوي - رتبة - حالة)
   void _openEditUserDialog(Map<String, dynamic> u) {
     final s = AppState.instance;
     final userCtrl = TextEditingController(text: u['username'] ?? '');
@@ -2397,7 +2385,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
-  // 3. إعادة تعيين الباسورد مع سؤال الأدمن عن الباسورد الجديد المطلوب
   void _openCustomPasswordResetDialog(Map<String, dynamic> u) {
     final s = AppState.instance;
     final passCtrl = TextEditingController(text: '123456');
@@ -2442,7 +2429,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
-  // 4. حذف المستخدم نهائياً
   void _deleteUser(Map<String, dynamic> u) async {
     final s = AppState.instance;
     if (widget.currentUserId == u['id']) {
@@ -3059,7 +3045,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 2. إدارة وتعديل وحذف المستخدمين بحرية كاملة
+                // 2. إدارة المستخدمين
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
@@ -3092,19 +3078,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // زر تعديل شامل (اسم - كود - رتبة - حالة)
                               IconButton(
                                 icon: const Icon(Icons.edit, color: Color(0xFF008DDA)),
                                 tooltip: s.t('Edit User Details', 'تعديل بيانات المستخدم بالكامل'),
                                 onPressed: () => _openEditUserDialog(u),
                               ),
-                              // زر تعيين باسورد مخصص
                               IconButton(
                                 icon: const Icon(Icons.password, color: Colors.orangeAccent),
                                 tooltip: s.t('Custom Password Reset', 'تعيين كلمة مرور جديدة من اختيارك'),
                                 onPressed: () => _openCustomPasswordResetDialog(u),
                               ),
-                              // زر حذف المستخدم نهائياً
                               IconButton(
                                 icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
                                 tooltip: s.t('Delete User', 'حذف المستخدم نهائياً'),
@@ -3118,7 +3101,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 3. طلبات استعادة وتعيين الباسورد (سجل Log + قرارات)
+                // 3. طلبات استعادة وتعيين الباسورد
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
@@ -3180,7 +3163,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 4. طلبات الانضمام (سجل Log + قرارات)
+                // 4. طلبات الانضمام
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
