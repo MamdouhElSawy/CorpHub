@@ -31,7 +31,7 @@ class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
 
-  bool isArabic = true; // الافتراضي للزائر الجديد عربي
+  bool isArabic = true;
   ThemeMode themeMode = ThemeMode.dark;
 
   Future<void> loadSavedPreferences() async {
@@ -85,12 +85,6 @@ class CorpHubApp extends StatelessWidget {
           title: state.isArabic ? 'دليل الشركات' : 'CorpHub - EGL',
           debugShowCheckedModeBanner: false,
           themeMode: state.themeMode,
-          locale: Locale(state.isArabic ? 'ar' : 'en'),
-          // دعم تغيير اتجاه الواجهة من اليمين للشمال للعربي (RTL / LTR)
-          supportedLocales: const [
-            Locale('ar', ''),
-            Locale('en', ''),
-          ],
           theme: ThemeData(
             brightness: Brightness.light,
             scaffoldBackgroundColor: const Color(0xFFF4F6F9),
@@ -211,25 +205,28 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.t('Delete Company', 'حذف الشركة')),
-        content: Text(
-          s.t(
-            'Are you sure you want to delete "$name" and all its associated addresses and contacts?',
-            'هل أنت متأكد من حذف شركة "$name" وجميع عناوينها وجهات الاتصال الخاصة بها؟',
+      builder: (ctx) => Directionality(
+        textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: AlertDialog(
+          title: Text(s.t('Delete Company', 'حذف الشركة')),
+          content: Text(
+            s.t(
+              'Are you sure you want to delete "$name" and all its associated addresses and contacts?',
+              'هل أنت متأكد من حذف شركة "$name" وجميع عناوينها وجهات الاتصال الخاصة بها؟',
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(s.t('Cancel', 'إلغاء')),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(s.t('Delete', 'حذف')),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(s.t('Cancel', 'إلغاء')),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.t('Delete', 'حذف')),
-          ),
-        ],
       ),
     );
 
@@ -266,94 +263,97 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(s.t('Change Password', 'تغيير كلمة المرور')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: oldPassCtrl,
-                obscureText: true,
-                decoration: InputDecoration(labelText: s.t('Current Password', 'كلمة المرور الحالية')),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: newPassCtrl,
-                obscureText: true,
-                decoration: InputDecoration(labelText: s.t('New Password', 'كلمة المرور الجديدة')),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: confirmPassCtrl,
-                obscureText: true,
-                decoration: InputDecoration(labelText: s.t('Confirm New Password', 'تأكيد كلمة المرور الجديدة')),
-              ),
-              if (err != null) ...[
+      builder: (ctx) => Directionality(
+        textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(s.t('Change Password', 'تغيير كلمة المرور')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: oldPassCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(labelText: s.t('Current Password', 'كلمة المرور الحالية')),
+                ),
                 const SizedBox(height: 10),
-                Text(err!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                TextField(
+                  controller: newPassCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(labelText: s.t('New Password', 'كلمة المرور الجديدة')),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: confirmPassCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(labelText: s.t('Confirm New Password', 'تأكيد كلمة المرور الجديدة')),
+                ),
+                if (err != null) ...[
+                  const SizedBox(height: 10),
+                  Text(err!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                ],
               ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(s.t('Cancel', 'إلغاء')),
+              ),
+              ElevatedButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final oldP = oldPassCtrl.text.trim();
+                        final newP = newPassCtrl.text.trim();
+                        final confP = confirmPassCtrl.text.trim();
+
+                        if (oldP != _currentUser!['password_hash']) {
+                          setDialogState(() => err = s.t('Incorrect current password', 'كلمة المرور الحالية غير صحيحة'));
+                          return;
+                        }
+                        if (newP.isEmpty) {
+                          setDialogState(() => err = s.t('New password cannot be empty', 'كلمة المرور لا يمكن أن تكون فارغة'));
+                          return;
+                        }
+                        if (newP != confP) {
+                          setDialogState(() => err = s.t('Passwords do not match', 'كلمتا المرور غير متطابقتين'));
+                          return;
+                        }
+
+                        setDialogState(() {
+                          saving = true;
+                          err = null;
+                        });
+
+                        try {
+                          await Supabase.instance.client
+                              .from('app_users')
+                              .update({'password_hash': newP})
+                              .eq('id', _currentUser!['id']);
+
+                          _currentUser!['password_hash'] = newP;
+                          final prefs = await SharedPreferences.getInstance();
+                          if (prefs.containsKey('saved_user_session')) {
+                            await prefs.setString('saved_user_session', jsonEncode(_currentUser));
+                          }
+
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(s.t('Password changed successfully!', 'تم تغيير كلمة المرور بنجاح!'))),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() => err = e.toString());
+                        } finally {
+                          setDialogState(() => saving = false);
+                        }
+                      },
+                child: saving ? const CircularProgressIndicator() : Text(s.t('Update Password', 'تحديث كلمة المرور')),
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(s.t('Cancel', 'إلغاء')),
-            ),
-            ElevatedButton(
-              onPressed: saving
-                  ? null
-                  : () async {
-                      final oldP = oldPassCtrl.text.trim();
-                      final newP = newPassCtrl.text.trim();
-                      final confP = confirmPassCtrl.text.trim();
-
-                      if (oldP != _currentUser!['password_hash']) {
-                        setDialogState(() => err = s.t('Incorrect current password', 'كلمة المرور الحالية غير صحيحة'));
-                        return;
-                      }
-                      if (newP.isEmpty) {
-                        setDialogState(() => err = s.t('New password cannot be empty', 'كلمة المرور لا يمكن أن تكون فارغة'));
-                        return;
-                      }
-                      if (newP != confP) {
-                        setDialogState(() => err = s.t('Passwords do not match', 'كلمتا المرور غير متطابقتين'));
-                        return;
-                      }
-
-                      setDialogState(() {
-                        saving = true;
-                        err = null;
-                      });
-
-                      try {
-                        await Supabase.instance.client
-                            .from('app_users')
-                            .update({'password_hash': newP})
-                            .eq('id', _currentUser!['id']);
-
-                        _currentUser!['password_hash'] = newP;
-                        final prefs = await SharedPreferences.getInstance();
-                        if (prefs.containsKey('saved_user_session')) {
-                          await prefs.setString('saved_user_session', jsonEncode(_currentUser));
-                        }
-
-                        if (mounted) {
-                          Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(s.t('Password changed successfully!', 'تم تغيير كلمة المرور بنجاح!'))),
-                          );
-                        }
-                      } catch (e) {
-                        setDialogState(() => err = e.toString());
-                      } finally {
-                        setDialogState(() => saving = false);
-                      }
-                    },
-              child: saving ? const CircularProgressIndicator() : Text(s.t('Update Password', 'تحديث كلمة المرور')),
-            ),
-          ],
         ),
       ),
     );
@@ -363,7 +363,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const CleanLoginDialog(),
+      builder: (_) => Directionality(
+        textDirection: AppState.instance.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: const CleanLoginDialog(),
+      ),
     );
     if (res != null) {
       setState(() => _currentUser = res);
@@ -374,13 +377,80 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     final res = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AdvancedCompanyDialog(
-        company: company,
-        allCompanies: _companies,
-        onDeleteRequested: company != null ? () => _deleteSingleCompany(company) : null,
+      builder: (_) => Directionality(
+        textDirection: AppState.instance.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: AdvancedCompanyDialog(
+          company: company,
+          allCompanies: _companies,
+          onDeleteRequested: company != null ? () => _deleteSingleCompany(company) : null,
+        ),
       ),
     );
     if (res == true) _loadAll();
+  }
+
+  // عرض صورة البطاقة الضريبية في نافذة منبثقة
+  void _viewTaxCardImage(String? url, String companyName) {
+    final s = AppState.instance;
+    if (url == null || url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.t('No tax card uploaded', 'لا توجد صورة مسجلة'))),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 600, maxHeight: 600),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${s.t("Tax Card - ", "البطاقة الضريبية - ")} $companyName',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                  ],
+                ),
+                const Divider(),
+                Expanded(
+                  child: InteractiveViewer(
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Center(
+                        child: Text(s.t('Failed to load image. Click below to open in browser.', 'تعذر عرض الصورة، اضغط الزر بالأسفل لفتحها مباشرة.')),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: Text(s.t('Open Original', 'فتح الرابط الأصلي / تحميل')),
+                      onPressed: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _shareOnWhatsApp(String? url, String companyName) async {
@@ -391,7 +461,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       );
       return;
     }
-    final msg = '${s.t("Tax Card for:", "البطاقة الضريبية لشركة:")} $companyName\n$url';
+    // رسالة المشاركة على الواتساب بصيغة احترافية
+    final msg = '${s.t("Tax Card Document for:", "مستند البطاقة الضريبية لشركة:")} $companyName\n\n$url';
     final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
     if (await canLaunchUrl(wa)) {
       await launchUrl(wa, mode: LaunchMode.externalApplication);
@@ -417,7 +488,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         elevation: 1,
         title: Row(
           children: [
-            // اللوجو الجديد مع تصميم متجاوب وآمن
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.network(
@@ -436,7 +506,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           ],
         ),
         actions: [
-          // 1. زر تحويل اللغة
           TextButton(
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -452,14 +521,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ],
             ),
           ),
-          // 2. زر المظهر
           IconButton(
             icon: Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
             tooltip: s.t('Toggle Theme', 'تبديل المظهر'),
             onPressed: () => s.toggleTheme(),
           ),
           const SizedBox(width: 6),
-          // 3. منطقة تسجيل الدخول واسم المستخدم
           if (!isLoggedIn)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -617,6 +684,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                               separatorBuilder: (_, __) => const SizedBox(height: 12),
                               itemBuilder: (ctx, i) {
                                 final comp = filtered[i];
+                                final compName = s.isArabic
+                                    ? (comp['name_ar'] ?? comp['name_en'] ?? '')
+                                    : (comp['name_en'] ?? comp['name_ar'] ?? '');
+
                                 return CompanyCard(
                                   company: comp,
                                   allCompanies: _companies,
@@ -625,10 +696,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                   privacy: _privacy,
                                   onEdit: () => _openAddEditCompanyDialog(comp),
                                   onDelete: () => _deleteSingleCompany(comp),
-                                  onShare: () => _shareOnWhatsApp(
-                                    comp['tax_card_url'],
-                                    s.isArabic ? (comp['name_ar'] ?? comp['name_en'] ?? '') : (comp['name_en'] ?? comp['name_ar'] ?? ''),
-                                  ),
+                                  onViewTaxCard: () => _viewTaxCardImage(comp['tax_card_url'], compName),
+                                  onShare: () => _shareOnWhatsApp(comp['tax_card_url'], compName),
                                 );
                               },
                             ),
@@ -648,6 +717,7 @@ class CompanyCard extends StatelessWidget {
   final Map<String, bool> privacy;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onViewTaxCard;
   final VoidCallback onShare;
 
   const CompanyCard({
@@ -659,6 +729,7 @@ class CompanyCard extends StatelessWidget {
     required this.privacy,
     required this.onEdit,
     required this.onDelete,
+    required this.onViewTaxCard,
     required this.onShare,
   });
 
@@ -757,16 +828,23 @@ class CompanyCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     if (showTax && company['tax_card_url'] != null) ...[
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
+                        icon: const Icon(Icons.visibility, size: 16),
+                        label: Text(s.t('View Tax Card', 'عرض البطاقة')),
+                        onPressed: onViewTaxCard,
+                      ),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
                         icon: const Icon(Icons.share, size: 16),
                         label: Text(s.t('WhatsApp Card', 'واتساب البطاقة')),
                         onPressed: onShare,
                       ),
-                      const SizedBox(width: 8),
                     ],
                     OutlinedButton.icon(
                       icon: const Icon(Icons.print, size: 16),
@@ -1377,7 +1455,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   }
 }
 
-// ----------------- نافذة الدخول مع خيار Stay Logged In -----------------
+// ----------------- نافذة الدخول مع طلبات الحساب والاستعادة -----------------
 class CleanLoginDialog extends StatefulWidget {
   const CleanLoginDialog({super.key});
 
@@ -1391,10 +1469,17 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   bool _stayLoggedIn = true;
   bool _loading = false;
   String? _error;
-  bool _showRequestForm = false;
 
+  int _viewMode = 0; // 0: Login, 1: Request New Account, 2: Request Password Reset
+
+  // فورم طلب حساب جديد
   final _nameReqController = TextEditingController();
   final _phoneReqController = TextEditingController();
+
+  // فورم استعادة الباسورد
+  final _resetPinController = TextEditingController();
+  final _resetPhoneController = TextEditingController();
+  final _resetNewPassController = TextEditingController();
 
   void _login() async {
     final s = AppState.instance;
@@ -1455,7 +1540,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
     }
   }
 
-  void _submitRequest() async {
+  void _submitAccountRequest() async {
     final s = AppState.instance;
     final name = _nameReqController.text.trim();
     final phone = _phoneReqController.text.trim();
@@ -1478,6 +1563,43 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
     }
   }
 
+  void _submitPasswordResetRequest() async {
+    final s = AppState.instance;
+    final pin = _resetPinController.text.trim();
+    final phone = _resetPhoneController.text.trim();
+    final newPass = _resetNewPassController.text.trim();
+
+    if (pin.isEmpty || phone.isEmpty || newPass.isEmpty) {
+      setState(() => _error = s.t('Please fill all fields', 'برجاء ملء كافة البيانات'));
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      await Supabase.instance.client.from('password_resets').insert({
+        'pin_code': pin,
+        'phone': phone,
+        'new_password': newPass,
+      });
+
+      if (mounted) {
+        Navigator.pop(context);
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            content: Text(s.t('Reset request submitted. Once approved by admin, your new password will be activated.', 'تم إرسال طلب تعيين كلمة المرور للإدارة، سيتم تفعيلها فور مصادقة الإدارة عليها.')),
+            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
@@ -1491,11 +1613,17 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _showRequestForm ? s.t('Request New Access', 'طلب انضمام جديد') : s.t('Login', 'تسجيل الدخول'),
+              _viewMode == 0
+                  ? s.t('Login', 'تسجيل الدخول')
+                  : _viewMode == 1
+                      ? s.t('Request New Access', 'طلب انضمام جديد')
+                      : s.t('Request Password Reset', 'طلب استعادة كلمة المرور'),
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
-            if (!_showRequestForm) ...[
+
+            // 0: تسجيل الدخول
+            if (_viewMode == 0) ...[
               TextField(
                 controller: _pinController,
                 keyboardType: TextInputType.number,
@@ -1550,16 +1678,34 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              TextButton(
-                onPressed: () => setState(() => _showRequestForm = true),
-                child: Text(s.t('Request a new account', 'طلب حساب مستخدم جديد')),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _error = null;
+                      _viewMode = 2;
+                    }),
+                    child: Text(s.t('Forgot Password?', 'نسيت كلمة المرور؟')),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _error = null;
+                      _viewMode = 1;
+                    }),
+                    child: Text(s.t('Request Account', 'طلب حساب جديد')),
+                  ),
+                ],
               ),
-            ] else ...[
+            ]
+            // 1: طلب حساب جديد
+            else if (_viewMode == 1) ...[
               TextField(
                 controller: _nameReqController,
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   hintText: s.t('Full Name', 'الاسم بالكامل'),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1567,9 +1713,10 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 controller: _phoneReqController,
                 keyboardType: TextInputType.phone,
                 textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _submitRequest(),
+                onSubmitted: (_) => _submitAccountRequest(),
                 decoration: InputDecoration(
                   hintText: s.t('WhatsApp Phone Number', 'رقم الهاتف (واتساب)'),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
               const SizedBox(height: 16),
@@ -1582,12 +1729,72 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: _submitRequest,
+                  onPressed: _submitAccountRequest,
                   child: Text(s.t('Submit Request', 'إرسال الطلب')),
                 ),
               ),
               TextButton(
-                onPressed: () => setState(() => _showRequestForm = false),
+                onPressed: () => setState(() {
+                  _error = null;
+                  _viewMode = 0;
+                }),
+                child: Text(s.t('Back to login', 'رجوع لتسجيل الدخول')),
+              ),
+            ]
+            // 2: طلب استعادة وتعيين كلمة المرور
+            else if (_viewMode == 2) ...[
+              TextField(
+                controller: _resetPinController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: InputDecoration(
+                  counterText: '',
+                  hintText: s.t('6-Digit PIN Code', 'كود الدخول الخاص بك (6 أرقام)'),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _resetPhoneController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  hintText: s.t('Registered Phone / WhatsApp', 'رقم الهاتف أو الواتساب المسجل'),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _resetNewPassController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  hintText: s.t('Desired New Password', 'كلمة المرور الجديدة المطلوبة'),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13), textAlign: TextAlign.center),
+                ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber.shade800,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: _loading ? null : _submitPasswordResetRequest,
+                  child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Submit Reset Request', 'إرسال طلب التعيين للإدارة')),
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() {
+                  _error = null;
+                  _viewMode = 0;
+                }),
                 child: Text(s.t('Back to login', 'رجوع لتسجيل الدخول')),
               ),
             ],
@@ -1714,6 +1921,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   late TabController _tabController;
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _requests = [];
+  List<Map<String, dynamic>> _resets = [];
   bool _busy = false;
 
   @override
@@ -1722,6 +1930,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _tabController = TabController(length: 4, vsync: this);
     _fetchUsers();
     _fetchRequests();
+    _fetchResets();
   }
 
   void _fetchUsers() async {
@@ -1736,6 +1945,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         .eq('status', 'pending')
         .order('created_at', ascending: false);
     setState(() => _requests = List<Map<String, dynamic>>.from(res));
+  }
+
+  void _fetchResets() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('password_resets')
+          .select()
+          .eq('status', 'pending')
+          .order('created_at', ascending: false);
+      setState(() => _resets = List<Map<String, dynamic>>.from(res));
+    } catch (_) {}
   }
 
   void _toggleSetting(String key, bool val) async {
@@ -1782,22 +2002,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('Group CEO'),
       TextCellValue('+201200000000'),
       TextCellValue('https://...'),
-    ]);
-
-    sheet.appendRow([
-      TextCellValue('EGL Transport & Customs'),
-      TextCellValue('المصرية للنقل والتخليص الجمركي'),
-      TextCellValue('FALSE'),
-      TextCellValue('EGL Logistics Group'),
-      TextCellValue('operation'),
-      TextCellValue('Alexandria Port, Gate 27'),
-      TextCellValue('ميناء الإسكندرية، باب 27'),
-      TextCellValue('https://maps.app.goo.gl/...'),
-      TextCellValue('Mohamed Ali'),
-      TextCellValue('محمد علي'),
-      TextCellValue('Operations Manager'),
-      TextCellValue('+201211111111'),
-      TextCellValue(''),
     ]);
 
     final bytes = excel.encode();
@@ -1921,7 +2125,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         final rows = excel.tables[table]!.rows;
         if (rows.length <= 1) continue;
 
-        // Pass 1: إنشاء وتحديث الشركات
         for (int i = 1; i < rows.length; i++) {
           final row = rows[i];
           if (row.isEmpty) continue;
@@ -1993,7 +2196,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           }
         }
 
-        // Pass 2: ربط الفروع بالأصل
         for (var link in pendingParentLinks) {
           final parentId = companyNameToId[link['parent_name']];
           if (parentId != null) {
@@ -2129,6 +2331,70 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
+  // إعادة تعيين الباسورد من داخل اليوزر بانل إلى 123456
+  void _adminResetPasswordDirect(Map<String, dynamic> u) async {
+    final s = AppState.instance;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.t('Reset Password', 'إعادة تعيين كلمة المرور')),
+        content: Text(
+          s.t(
+            'Reset password for ${u["username"]} to default: 123456 ?',
+            'هل أنت متأكد من إعادة تعيين كلمة المرور لـ ${u["username"]} إلى الافتراضية: 123456 ؟',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.t('Cancel', 'إلغاء'))),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.t('Reset', 'إعادة تعيين'))),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await Supabase.instance.client.from('app_users').update({'password_hash': '123456'}).eq('id', u['id']);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${s.t("Password reset for", "تم تعيين كلمة المرور لـ")} ${u["username"]}: 123456')),
+      );
+    }
+  }
+
+  // اعتماد طلب استعادة كلمة المرور بدون كشفها
+  void _approvePasswordReset(Map<String, dynamic> r) async {
+    final s = AppState.instance;
+    try {
+      final pin = r['pin_code'];
+      final newPass = r['new_password'];
+
+      // تحديث الباسورد في جدول المستخدمين
+      await Supabase.instance.client
+          .from('app_users')
+          .update({'password_hash': newPass})
+          .eq('pin_code', pin);
+
+      // تحديث حالة الطلب
+      await Supabase.instance.client
+          .from('password_resets')
+          .update({'status': 'approved'})
+          .eq('id', r['id']);
+
+      _fetchResets();
+
+      final phone = r['phone'].toString().replaceAll(RegExp(r'[^0-9]'), '');
+      final msg = 'Hello! Your password reset request for CorpHub has been approved. You can now login with your new password.';
+      final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
+      if (await canLaunchUrl(waUri)) {
+        await launchUrl(waUri, mode: LaunchMode.externalApplication);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.t('Password reset approved successfully!', 'تم اعتماد كلمة المرور الجديدة وتحديثها بنجاح!'))),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
@@ -2142,7 +2408,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           tabs: [
             Tab(icon: const Icon(Icons.table_chart), text: s.t('Excel Operations', 'إدارة الإكسيل')),
             Tab(icon: const Icon(Icons.people), text: s.t('User Panel', 'إدارة المستخدمين')),
-            Tab(icon: const Icon(Icons.visibility), text: s.t('Privacy Settings', 'الخصوصية')),
+            Tab(icon: const Icon(Icons.lock_reset), text: s.t('Password Resets (${_resets.length})', 'استعادة الباسورد (${_resets.length})')),
             Tab(icon: const Icon(Icons.mark_email_unread), text: s.t('Requests', 'طلبات الانضمام')),
           ],
         ),
@@ -2152,6 +2418,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           : TabBarView(
               controller: _tabController,
               children: [
+                // 1. الإكسيل
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
@@ -2221,6 +2488,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                   ],
                 ),
+
+                // 2. إدارة المستخدمين
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
@@ -2265,6 +2534,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                 },
                               ),
                               IconButton(
+                                icon: const Icon(Icons.password, color: Colors.orangeAccent),
+                                tooltip: s.t('Reset Password to 123456', 'إعادة تعيين كلمة المرور لـ 123456'),
+                                onPressed: () => _adminResetPasswordDirect(u),
+                              ),
+                              IconButton(
                                 icon: const Icon(Icons.pin),
                                 tooltip: s.t('Reset PIN', 'تغيير الكود'),
                                 onPressed: () => _resetUserPin(u),
@@ -2281,33 +2555,37 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     }),
                   ],
                 ),
+
+                // 3. طلبات استعادة وتعيين الباسورد (بدون كشف كلمة المرور للأدمن)
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
-                    Text(s.t('Visibility for Non-Logged Users:', 'إعدادات إخفاء وإظهار الأعمدة لغير المسجلين:'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      title: Text(s.t('Allow Public Browsing', 'السماح بالتصفح العام')),
-                      value: widget.privacy['allow_public_read'] ?? true,
-                      onChanged: (v) => _toggleSetting('allow_public_read', v),
-                    ),
-                    SwitchListTile(
-                      title: Text(s.t('Show Tax Card Image', 'إظهار صورة البطاقة الضريبية')),
-                      value: widget.privacy['public_show_tax_card'] ?? false,
-                      onChanged: (v) => _toggleSetting('public_show_tax_card', v),
-                    ),
-                    SwitchListTile(
-                      title: Text(s.t('Show Phone Numbers', 'إظهار أرقام الهواتف')),
-                      value: widget.privacy['public_show_phones'] ?? false,
-                      onChanged: (v) => _toggleSetting('public_show_phones', v),
-                    ),
-                    SwitchListTile(
-                      title: Text(s.t('Show Operation Addresses', 'إظهار عناوين التشغيل والمصانع')),
-                      value: widget.privacy['public_show_operation_addresses'] ?? false,
-                      onChanged: (v) => _toggleSetting('public_show_operation_addresses', v),
-                    ),
+                    Text(s.t('Pending Password Resets (${_resets.length})', 'طلبات تعيين كلمة المرور المعلقة (${_resets.length})'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    const SizedBox(height: 12),
+                    if (_resets.isEmpty)
+                      Text(s.t('No pending password reset requests', 'لا توجد طلبات استعادة معلقة حالياً'))
+                    else
+                      ..._resets.map((r) => Card(
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                backgroundColor: Colors.amber,
+                                child: Icon(Icons.lock_reset, color: Colors.white),
+                              ),
+                              title: Text('${s.t("User PIN:", "كود المستخدم:")} ${r["pin_code"]}'),
+                              subtitle: Text('${s.t("Phone:", "الهاتف:")} ${r["phone"]}\n${s.t("Password: [Secured & Hidden]", "كلمة المرور: [مشفرة ومحمية من العرض]")}'),
+                              isThreeLine: true,
+                              trailing: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+                                icon: const Icon(Icons.check, size: 16),
+                                label: Text(s.t('Approve & Notify', 'اعتماد وإخطار واتساب')),
+                                onPressed: () => _approvePasswordReset(r),
+                              ),
+                            ),
+                          )),
                   ],
                 ),
+
+                // 4. طلبات الانضمام
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
