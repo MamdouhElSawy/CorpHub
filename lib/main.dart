@@ -205,6 +205,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
     final confirm = await showDialog<bool>(
       context: context,
+      barrierDismissible: true,
       builder: (ctx) => Directionality(
         textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
         child: AlertDialog(
@@ -263,6 +264,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (ctx) => Directionality(
         textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
         child: StatefulBuilder(
@@ -362,7 +364,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   void _openLoginDialog() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (_) => Directionality(
         textDirection: AppState.instance.isArabic ? TextDirection.rtl : TextDirection.ltr,
         child: const CleanLoginDialog(),
@@ -374,14 +376,17 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 
   void _openAddEditCompanyDialog([Map<String, dynamic>? company]) async {
+    final isMobile = MediaQuery.of(context).size.width < 768;
+
     final res = await showDialog<bool>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (_) => Directionality(
         textDirection: AppState.instance.isArabic ? TextDirection.rtl : TextDirection.ltr,
         child: AdvancedCompanyDialog(
           company: company,
           allCompanies: _companies,
+          isMobile: isMobile,
           onDeleteRequested: company != null ? () => _deleteSingleCompany(company) : null,
         ),
       ),
@@ -389,7 +394,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     if (res == true) _loadAll();
   }
 
-  // عرض صورة البطاقة الضريبية في نافذة منبثقة
   void _viewTaxCardImage(String? url, String companyName) {
     final s = AppState.instance;
     if (url == null || url.isEmpty) {
@@ -401,6 +405,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (ctx) => Directionality(
         textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
         child: Dialog(
@@ -461,7 +466,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       );
       return;
     }
-    // رسالة المشاركة على الواتساب بصيغة احترافية
     final msg = '${s.t("Tax Card Document for:", "مستند البطاقة الضريبية لشركة:")} $companyName\n\n$url';
     final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
     if (await canLaunchUrl(wa)) {
@@ -474,6 +478,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     final s = AppState.instance;
     final isLoggedIn = _currentUser != null;
     final canBrowse = (_privacy['allow_public_read'] ?? true) || isLoggedIn;
+    final isMobile = MediaQuery.of(context).size.width < 768;
 
     final filtered = _companies.where((c) {
       final nameAr = (c['name_ar'] ?? '').toString().toLowerCase();
@@ -481,6 +486,19 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       final q = _searchQuery.toLowerCase();
       return nameAr.contains(q) || nameEn.contains(q);
     }).toList();
+
+    // الترتيب الأبجدي المتجاوب مع اللغة
+    filtered.sort((a, b) {
+      final strA = s.isArabic
+          ? (a['name_ar']?.toString().trim().isNotEmpty == true ? a['name_ar'] : a['name_en'] ?? '')
+          : (a['name_en']?.toString().trim().isNotEmpty == true ? a['name_en'] : a['name_ar'] ?? '');
+
+      final strB = s.isArabic
+          ? (b['name_ar']?.toString().trim().isNotEmpty == true ? b['name_ar'] : b['name_en'] ?? '')
+          : (b['name_en']?.toString().trim().isNotEmpty == true ? b['name_en'] : b['name_ar'] ?? '');
+
+      return strA.toString().toLowerCase().compareTo(strB.toString().toLowerCase());
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -492,150 +510,268 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               borderRadius: BorderRadius.circular(6),
               child: Image.network(
                 'https://www.eglegypt.com/wp-content/uploads/2022/05/EGL-Logo-2022-1536x708.jpg.webp',
-                height: 38,
+                height: isMobile ? 26 : 38,
                 fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFF008DDA), borderRadius: BorderRadius.circular(6)),
-                  child: const Text('EGL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: const Color(0xFF008DDA), borderRadius: BorderRadius.circular(4)),
+                  child: const Text('EGL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
-            Text(s.t('CorpHub Directory', 'دليل الشركات'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            const SizedBox(width: 8),
+            Text(
+              isMobile ? 'CorpHub' : s.t('CorpHub Directory', 'دليل الشركات'),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 15 : 18),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
-            ),
-            onPressed: () => s.toggleLanguage(),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.language, size: 18),
-                const SizedBox(width: 4),
-                Text(s.isArabic ? 'English' : 'عربي', style: const TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
-            tooltip: s.t('Toggle Theme', 'تبديل المظهر'),
-            onPressed: () => s.toggleTheme(),
-          ),
-          const SizedBox(width: 6),
-          if (!isLoggedIn)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF008DDA),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                icon: const Icon(Icons.login, size: 18),
-                label: Text(s.t('Login', 'تسجيل الدخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: _openLoginDialog,
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: PopupMenuButton<String>(
-                tooltip: s.t('Account Menu', 'قائمة الحساب'),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).primaryColor.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.4)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircleAvatar(
-                        radius: 12,
-                        backgroundColor: const Color(0xFF008DDA),
-                        child: Text(
-                          (_currentUser!['username'] ?? 'U')[0].toString().toUpperCase(),
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _currentUser!['username'] ?? 'User',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      const Icon(Icons.arrow_drop_down, size: 18),
-                    ],
-                  ),
-                ),
-                onSelected: (val) async {
-                  if (val == 'admin') {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => Directionality(
-                          textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                          child: AdminPanelScreen(
-                            privacy: _privacy,
-                            onUpdate: _loadAll,
-                            companies: _companies,
+        actions: isMobile
+            ? [
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: s.t('Options', 'الخيارات'),
+                  onSelected: (val) async {
+                    if (val == 'lang') {
+                      s.toggleLanguage();
+                    } else if (val == 'theme') {
+                      s.toggleTheme();
+                    } else if (val == 'login') {
+                      _openLoginDialog();
+                    } else if (val == 'admin') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => Directionality(
+                            textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                            child: AdminPanelScreen(
+                              privacy: _privacy,
+                              onUpdate: _loadAll,
+                              companies: _companies,
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  } else if (val == 'password') {
-                    _openChangePasswordDialog();
-                  } else if (val == 'logout') {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.remove('saved_user_session');
-                    setState(() => _currentUser = null);
-                  }
-                },
-                itemBuilder: (ctx) => [
-                  if (_currentUser!['role'] == 'admin')
+                      );
+                    } else if (val == 'password') {
+                      _openChangePasswordDialog();
+                    } else if (val == 'logout') {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.remove('saved_user_session');
+                      setState(() => _currentUser = null);
+                    }
+                  },
+                  itemBuilder: (ctx) => [
                     PopupMenuItem(
-                      value: 'admin',
+                      value: 'lang',
                       child: Row(
                         children: [
-                          const Icon(Icons.admin_panel_settings, color: Color(0xFF008DDA), size: 20),
+                          const Icon(Icons.language, size: 20),
                           const SizedBox(width: 8),
-                          Text(s.t('Admin Panel', 'لوحة تحكم الإدارة')),
+                          Text(s.isArabic ? 'English' : 'العربية'),
                         ],
                       ),
                     ),
-                  PopupMenuItem(
-                    value: 'password',
-                    child: Row(
-                      children: [
-                        const Icon(Icons.password, color: Colors.orangeAccent, size: 20),
-                        const SizedBox(width: 8),
-                        Text(s.t('Change Password', 'تغيير كلمة المرور')),
+                    PopupMenuItem(
+                      value: 'theme',
+                      child: Row(
+                        children: [
+                          Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined, size: 20),
+                          const SizedBox(width: 8),
+                          Text(s.themeMode == ThemeMode.dark ? s.t('Light Theme', 'الوضع النهاري') : s.t('Dark Theme', 'الوضع الليلي')),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    if (!isLoggedIn)
+                      PopupMenuItem(
+                        value: 'login',
+                        child: Row(
+                          children: [
+                            const Icon(Icons.login, color: Color(0xFF008DDA), size: 20),
+                            const SizedBox(width: 8),
+                            Text(s.t('Login', 'تسجيل الدخول')),
+                          ],
+                        ),
+                      )
+                    else ...[
+                      if (_currentUser!['role'] == 'admin')
+                        PopupMenuItem(
+                          value: 'admin',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.admin_panel_settings, color: Color(0xFF008DDA), size: 20),
+                              const SizedBox(width: 8),
+                              Text(s.t('Admin Panel', 'لوحة تحكم الإدارة')),
+                            ],
+                          ),
+                        ),
+                      PopupMenuItem(
+                        value: 'password',
+                        child: Row(
+                          children: [
+                            const Icon(Icons.password, color: Colors.orangeAccent, size: 20),
+                            const SizedBox(width: 8),
+                            Text(s.t('Change Password', 'تغيير كلمة المرور')),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'logout',
+                        child: Row(
+                          children: [
+                            const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                            const SizedBox(width: 8),
+                            Text(s.t('Logout', 'تسجيل الخروج')),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (isLoggedIn)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                    child: CircleAvatar(
+                      radius: 14,
+                      backgroundColor: const Color(0xFF008DDA),
+                      child: Text(
+                        (_currentUser!['username'] ?? 'U')[0].toString().toUpperCase(),
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+              ]
+            : [
+                TextButton(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
+                  ),
+                  onPressed: () => s.toggleLanguage(),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.language, size: 18),
+                      const SizedBox(width: 4),
+                      Text(s.isArabic ? 'English' : 'عربي', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
+                  tooltip: s.t('Toggle Theme', 'تبديل المظهر'),
+                  onPressed: () => s.toggleTheme(),
+                ),
+                const SizedBox(width: 6),
+                if (!isLoggedIn)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF008DDA),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      icon: const Icon(Icons.login, size: 18),
+                      label: Text(s.t('Login', 'تسجيل الدخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: _openLoginDialog,
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: PopupMenuButton<String>(
+                      tooltip: s.t('Account Menu', 'قائمة الحساب'),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).primaryColor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.4)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircleAvatar(
+                              radius: 12,
+                              backgroundColor: const Color(0xFF008DDA),
+                              child: Text(
+                                (_currentUser!['username'] ?? 'U')[0].toString().toUpperCase(),
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _currentUser!['username'] ?? 'User',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            const Icon(Icons.arrow_drop_down, size: 18),
+                          ],
+                        ),
+                      ),
+                      onSelected: (val) async {
+                        if (val == 'admin') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => Directionality(
+                                textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                                child: AdminPanelScreen(
+                                  privacy: _privacy,
+                                  onUpdate: _loadAll,
+                                  companies: _companies,
+                                ),
+                              ),
+                            ),
+                          );
+                        } else if (val == 'password') {
+                          _openChangePasswordDialog();
+                        } else if (val == 'logout') {
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.remove('saved_user_session');
+                          setState(() => _currentUser = null);
+                        }
+                      },
+                      itemBuilder: (ctx) => [
+                        if (_currentUser!['role'] == 'admin')
+                          PopupMenuItem(
+                            value: 'admin',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.admin_panel_settings, color: Color(0xFF008DDA), size: 20),
+                                const SizedBox(width: 8),
+                                Text(s.t('Admin Panel', 'لوحة تحكم الإدارة')),
+                              ],
+                            ),
+                          ),
+                        PopupMenuItem(
+                          value: 'password',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.password, color: Colors.orangeAccent, size: 20),
+                              const SizedBox(width: 8),
+                              Text(s.t('Change Password', 'تغيير كلمة المرور')),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'logout',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                              const SizedBox(width: 8),
+                              Text(s.t('Logout', 'تسجيل الخروج')),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: 'logout',
-                    child: Row(
-                      children: [
-                        const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-                        const SizedBox(width: 8),
-                        Text(s.t('Logout', 'تسجيل الخروج')),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(width: 8),
-        ],
+                const SizedBox(width: 8),
+              ],
       ),
       floatingActionButton: _canEdit
           ? FloatingActionButton.extended(
@@ -662,7 +798,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(isMobile ? 10 : 16),
                   child: TextField(
                     decoration: InputDecoration(
                       hintText: s.t('Search company name...', 'ابحث باسم الشركة...'),
@@ -679,7 +815,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       : filtered.isEmpty
                           ? Center(child: Text(s.t('No companies found', 'لا توجد بيانات مسجلة')))
                           : ListView.separated(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 16, vertical: 8),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 12),
                               itemBuilder: (ctx, i) {
@@ -851,6 +987,7 @@ class CompanyCard extends StatelessWidget {
                       label: Text(s.t('Selective Print', 'طباعة مخصصة')),
                       onPressed: () => showDialog(
                         context: context,
+                        barrierDismissible: true,
                         builder: (_) => SelectivePrintDialog(company: company),
                       ),
                     ),
@@ -944,12 +1081,14 @@ class CompanyCard extends StatelessWidget {
 class AdvancedCompanyDialog extends StatefulWidget {
   final Map<String, dynamic>? company;
   final List<Map<String, dynamic>> allCompanies;
+  final bool isMobile;
   final VoidCallback? onDeleteRequested;
 
   const AdvancedCompanyDialog({
     super.key,
     this.company,
     required this.allCompanies,
+    required this.isMobile,
     this.onDeleteRequested,
   });
 
@@ -1151,22 +1290,24 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
         : [];
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: widget.isMobile ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(widget.isMobile ? 0 : 16)),
       child: Container(
-        width: 680,
-        height: 760,
-        padding: const EdgeInsets.all(24),
+        width: widget.isMobile ? double.infinity : 680,
+        height: widget.isMobile ? double.infinity : 760,
+        padding: EdgeInsets.all(widget.isMobile ? 16 : 24),
         child: Column(
           children: [
             Row(
               children: [
                 Icon(widget.company == null ? Icons.add_business : Icons.edit, color: const Color(0xFF008DDA)),
                 const SizedBox(width: 8),
-                Text(
-                  widget.company == null ? s.t('Register New Company', 'تسجيل شركة جديدة') : s.t('Edit Company Details', 'تعديل بيانات الشركة'),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    widget.company == null ? s.t('Register New Company', 'تسجيل شركة جديدة') : s.t('Edit Company Details', 'تعديل بيانات الشركة'),
+                    style: TextStyle(fontSize: widget.isMobile ? 16 : 18, fontWeight: FontWeight.bold),
+                  ),
                 ),
-                const Spacer(),
                 IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
               ],
             ),
@@ -1176,23 +1317,35 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                 children: [
                   Text(s.t('1. Company Information', '١. بيانات الشركة الأساسية'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _nameEn,
-                          decoration: InputDecoration(labelText: s.t('Name (English)', 'الاسم بالإنجليزية'), prefixIcon: const Icon(Icons.language)),
+                  if (widget.isMobile) ...[
+                    TextField(
+                      controller: _nameEn,
+                      decoration: InputDecoration(labelText: s.t('Name (English)', 'الاسم بالإنجليزية'), prefixIcon: const Icon(Icons.language)),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _nameAr,
+                      decoration: InputDecoration(labelText: s.t('Name (Arabic)', 'الاسم بالعربية'), prefixIcon: const Icon(Icons.translate)),
+                    ),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _nameEn,
+                            decoration: InputDecoration(labelText: s.t('Name (English)', 'الاسم بالإنجليزية'), prefixIcon: const Icon(Icons.language)),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _nameAr,
-                          decoration: InputDecoration(labelText: s.t('Name (Arabic)', 'الاسم بالعربية'), prefixIcon: const Icon(Icons.translate)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _nameAr,
+                            decoration: InputDecoration(labelText: s.t('Name (Arabic)', 'الاسم بالعربية'), prefixIcon: const Icon(Icons.translate)),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -1455,7 +1608,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   }
 }
 
-// ----------------- نافذة الدخول مع طلبات الحساب والاستعادة -----------------
+// ----------------- نافذة الدخول مع خيار Stay Logged In -----------------
 class CleanLoginDialog extends StatefulWidget {
   const CleanLoginDialog({super.key});
 
@@ -1470,13 +1623,11 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   bool _loading = false;
   String? _error;
 
-  int _viewMode = 0; // 0: Login, 1: Request New Account, 2: Request Password Reset
+  int _viewMode = 0;
 
-  // فورم طلب حساب جديد
   final _nameReqController = TextEditingController();
   final _phoneReqController = TextEditingController();
 
-  // فورم استعادة الباسورد
   final _resetPinController = TextEditingController();
   final _resetPhoneController = TextEditingController();
   final _resetNewPassController = TextEditingController();
@@ -1555,6 +1706,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
       Navigator.pop(context);
       showDialog(
         context: context,
+        barrierDismissible: true,
         builder: (_) => AlertDialog(
           content: Text(s.t('Request submitted successfully. Credentials will be sent via WhatsApp.', 'تم إرسال طلبك للإدارة، سيتم إرسال بيانات الدخول عبر الواتساب.')),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
@@ -1587,6 +1739,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
         Navigator.pop(context);
         showDialog(
           context: context,
+          barrierDismissible: true,
           builder: (_) => AlertDialog(
             content: Text(s.t('Reset request submitted. Once approved by admin, your new password will be activated.', 'تم إرسال طلب تعيين كلمة المرور للإدارة، سيتم تفعيلها فور مصادقة الإدارة عليها.')),
             actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
@@ -1612,17 +1765,26 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              _viewMode == 0
-                  ? s.t('Login', 'تسجيل الدخول')
-                  : _viewMode == 1
-                      ? s.t('Request New Access', 'طلب انضمام جديد')
-                      : s.t('Request Password Reset', 'طلب استعادة كلمة المرور'),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _viewMode == 0
+                      ? s.t('Login', 'تسجيل الدخول')
+                      : _viewMode == 1
+                          ? s.t('Request New Access', 'طلب انضمام جديد')
+                          : s.t('Request Password Reset', 'طلب استعادة كلمة المرور'),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                  tooltip: s.t('Close', 'إغلاق'),
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            // 0: تسجيل الدخول
             if (_viewMode == 0) ...[
               TextField(
                 controller: _pinController,
@@ -1697,9 +1859,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                   ),
                 ],
               ),
-            ]
-            // 1: طلب حساب جديد
-            else if (_viewMode == 1) ...[
+            ] else if (_viewMode == 1) ...[
               TextField(
                 controller: _nameReqController,
                 textInputAction: TextInputAction.next,
@@ -1740,9 +1900,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 }),
                 child: Text(s.t('Back to login', 'رجوع لتسجيل الدخول')),
               ),
-            ]
-            // 2: طلب استعادة وتعيين كلمة المرور
-            else if (_viewMode == 2) ...[
+            ] else if (_viewMode == 2) ...[
               TextField(
                 controller: _resetPinController,
                 keyboardType: TextInputType.number,
@@ -2004,6 +2162,22 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('https://...'),
     ]);
 
+    sheet.appendRow([
+      TextCellValue('EGL Transport & Customs'),
+      TextCellValue('المصرية للنقل والتخليص الجمركي'),
+      TextCellValue('FALSE'),
+      TextCellValue('EGL Logistics Group'),
+      TextCellValue('operation'),
+      TextCellValue('Alexandria Port, Gate 27'),
+      TextCellValue('ميناء الإسكندرية، باب 27'),
+      TextCellValue('https://maps.app.goo.gl/...'),
+      TextCellValue('Mohamed Ali'),
+      TextCellValue('محمد علي'),
+      TextCellValue('Operations Manager'),
+      TextCellValue('+201211111111'),
+      TextCellValue(''),
+    ]);
+
     final bytes = excel.encode();
     if (bytes != null) {
       _triggerDownloadWeb(bytes, 'corphub_template.xlsx');
@@ -2226,6 +2400,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     final s = AppState.instance;
     final confirm = await showDialog<bool>(
       context: context,
+      barrierDismissible: true,
       builder: (_) => AlertDialog(
         title: Text(s.t('DANGER: Wipe All Companies?', 'تحذير شديد: مسح جميع الشركات؟')),
         content: Text(s.t('This will permanently delete all companies, addresses, and contacts. Are you absolutely sure?', 'سيتم حذف كل الشركات والعناوين والأرقام نهائياً ولا يمكن استرجاعها! هل أنت متأكد؟')),
@@ -2262,6 +2437,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: Text(s.t('Add New User', 'إضافة مستخدم جديد')),
@@ -2331,11 +2507,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
-  // إعادة تعيين الباسورد من داخل اليوزر بانل إلى 123456
   void _adminResetPasswordDirect(Map<String, dynamic> u) async {
     final s = AppState.instance;
     final confirm = await showDialog<bool>(
       context: context,
+      barrierDismissible: true,
       builder: (ctx) => AlertDialog(
         title: Text(s.t('Reset Password', 'إعادة تعيين كلمة المرور')),
         content: Text(
@@ -2359,20 +2535,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
   }
 
-  // اعتماد طلب استعادة كلمة المرور بدون كشفها
   void _approvePasswordReset(Map<String, dynamic> r) async {
     final s = AppState.instance;
     try {
       final pin = r['pin_code'];
       final newPass = r['new_password'];
 
-      // تحديث الباسورد في جدول المستخدمين
       await Supabase.instance.client
           .from('app_users')
           .update({'password_hash': newPass})
           .eq('pin_code', pin);
 
-      // تحديث حالة الطلب
       await Supabase.instance.client
           .from('password_resets')
           .update({'status': 'approved'})
@@ -2398,12 +2571,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
+    final isMobile = MediaQuery.of(context).size.width < 768;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(s.t('Admin Control Panel', 'لوحة تحكم الإدارة')),
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: isMobile,
           indicatorColor: const Color(0xFF008DDA),
           tabs: [
             Tab(icon: const Icon(Icons.table_chart), text: s.t('Excel Operations', 'إدارة الإكسيل')),
@@ -2418,9 +2593,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           : TabBarView(
               controller: _tabController,
               children: [
-                // 1. الإكسيل
                 ListView(
-                  padding: const EdgeInsets.all(20),
+                  padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
                     Text(s.t('Excel Management & Bulk Import', 'مركز إدارة وتحميل ملفات الإكسيل'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                     const SizedBox(height: 16),
@@ -2443,30 +2617,46 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     const Divider(height: 32),
                     Text(s.t('Upload Actions:', 'خيارات الرفع والتحديث:'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
-                            icon: const Icon(Icons.add),
-                            label: Text(s.t('Append to Existing Data\n(إضافة فوق الحالي)', 'إضافة فوق الحالي')),
-                            onPressed: () => _handleExcelUpload(mode: 'append'),
+                    if (isMobile) ...[
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white, padding: const EdgeInsets.all(14)),
+                        icon: const Icon(Icons.add),
+                        label: Text(s.t('Append to Existing Data', 'إضافة فوق الحالي')),
+                        onPressed: () => _handleExcelUpload(mode: 'append'),
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade800, foregroundColor: Colors.white, padding: const EdgeInsets.all(14)),
+                        icon: const Icon(Icons.sync),
+                        label: Text(s.t('Update / Merge Data', 'تحديث وتعديل القائم')),
+                        onPressed: () => _handleExcelUpload(mode: 'update'),
+                      ),
+                    ] else ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
+                              icon: const Icon(Icons.add),
+                              label: Text(s.t('Append to Existing Data\n(إضافة فوق الحالي)', 'إضافة فوق الحالي')),
+                              onPressed: () => _handleExcelUpload(mode: 'append'),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade800, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
-                            icon: const Icon(Icons.sync),
-                            label: Text(s.t('Update / Merge Data\n(تحديث وتعديل القائم)', 'تحديث وتعديل القائم')),
-                            onPressed: () => _handleExcelUpload(mode: 'update'),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade800, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
+                              icon: const Icon(Icons.sync),
+                              label: Text(s.t('Update / Merge Data\n(تحديث وتعديل القائم)', 'تحديث وتعديل القائم')),
+                              onPressed: () => _handleExcelUpload(mode: 'update'),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, padding: const EdgeInsets.all(14)),
                       icon: const Icon(Icons.delete_sweep),
                       label: Text(s.t('Wipe & Import From Scratch (مسح كامل وإضافة الفايل من الصفر)', 'مسح كامل وإضافة الفايل من الصفر')),
                       onPressed: () => _handleExcelUpload(mode: 'wipe_import'),
@@ -2491,7 +2681,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
                 // 2. إدارة المستخدمين
                 ListView(
-                  padding: const EdgeInsets.all(20),
+                  padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2556,9 +2746,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 3. طلبات استعادة وتعيين الباسورد (بدون كشف كلمة المرور للأدمن)
+                // 3. طلبات استعادة وتعيين الباسورد
                 ListView(
-                  padding: const EdgeInsets.all(20),
+                  padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
                     Text(s.t('Pending Password Resets (${_resets.length})', 'طلبات تعيين كلمة المرور المعلقة (${_resets.length})'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                     const SizedBox(height: 12),
