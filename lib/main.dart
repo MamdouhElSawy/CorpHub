@@ -31,14 +31,14 @@ class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
 
-  bool isArabic = false;
+  bool isArabic = true; // الافتراضي عربي لكل المستخدمين والزوار الجدد
   ThemeMode themeMode = ThemeMode.dark;
 
   Future<void> loadSavedPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.containsKey('app_is_arabic')) {
-        isArabic = prefs.getBool('app_is_arabic') ?? false;
+        isArabic = prefs.getBool('app_is_arabic') ?? true;
       }
       if (prefs.containsKey('app_is_dark')) {
         final isDark = prefs.getBool('app_is_dark') ?? true;
@@ -641,7 +641,6 @@ class CompanyCard extends StatelessWidget {
     final contacts = (company['company_contacts'] as List? ?? []);
     final isGroup = company['is_group'] == true;
     final parentId = company['parent_company_id'];
-    final mapsUrl = company['google_maps_url']?.toString();
 
     String? parentName;
     if (parentId != null) {
@@ -709,24 +708,17 @@ class CompanyCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                Row(
                   children: [
-                    if (showTax && company['tax_card_url'] != null)
+                    if (showTax && company['tax_card_url'] != null) ...[
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
                         icon: const Icon(Icons.share, size: 16),
                         label: Text(s.t('WhatsApp Card', 'واتساب البطاقة')),
                         onPressed: onShare,
                       ),
-                    if (mapsUrl != null && mapsUrl.isNotEmpty)
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-                        icon: const Icon(Icons.location_on, size: 16),
-                        label: Text(s.t('Google Maps', 'الموقع على الخريطة')),
-                        onPressed: () => _openMaps(mapsUrl),
-                      ),
+                      const SizedBox(width: 8),
+                    ],
                     OutlinedButton.icon(
                       icon: const Icon(Icons.print, size: 16),
                       label: Text(s.t('Selective Print', 'طباعة مخصصة')),
@@ -744,9 +736,41 @@ class CompanyCard extends StatelessWidget {
                   ...addresses.map((a) {
                     final isMail = a['type'] == 'mailing';
                     final addrText = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
+                    final mapUrl = a['map_url']?.toString();
+
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text('• [${isMail ? s.t("Mailing", "مراسلة") : s.t("Operation", "تشغيل")}]: $addrText'),
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Text('• [${isMail ? s.t("Mailing", "مراسلة") : s.t("Operation", "تشغيل")}]: $addrText'),
+                          ),
+                          if (mapUrl != null && mapUrl.trim().isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () => _openMaps(mapUrl),
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.redAccent.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.location_on, size: 14, color: Colors.redAccent),
+                                    const SizedBox(width: 4),
+                                    Text(s.t('Map', 'الخريطة'), style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     );
                   }),
                   const SizedBox(height: 12),
@@ -810,7 +834,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   final _nameEn = TextEditingController();
   final _nameAr = TextEditingController();
   final _taxCardUrl = TextEditingController();
-  final _mapsUrl = TextEditingController();
   bool _isGroup = false;
   String? _parentCompanyId;
 
@@ -827,7 +850,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       _nameEn.text = widget.company!['name_en'] ?? '';
       _nameAr.text = widget.company!['name_ar'] ?? '';
       _taxCardUrl.text = widget.company!['tax_card_url'] ?? '';
-      _mapsUrl.text = widget.company!['google_maps_url'] ?? '';
       _isGroup = widget.company!['is_group'] == true;
       _parentCompanyId = widget.company!['parent_company_id'];
 
@@ -837,6 +859,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
           'type': a['type'] ?? 'mailing',
           'en': TextEditingController(text: a['address_en'] ?? ''),
           'ar': TextEditingController(text: a['address_ar'] ?? ''),
+          'map_url': TextEditingController(text: a['map_url'] ?? ''),
         });
       }
 
@@ -850,7 +873,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
         });
       }
     } else {
-      _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController()});
+      _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController(), 'map_url': TextEditingController()});
       _contacts.add({'name_en': TextEditingController(), 'name_ar': TextEditingController(), 'role': TextEditingController(), 'phone': TextEditingController()});
     }
   }
@@ -913,7 +936,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
         'name_en': en.isEmpty ? null : en,
         'name_ar': ar.isEmpty ? null : ar,
         'tax_card_url': _taxCardUrl.text.trim().isEmpty ? null : _taxCardUrl.text.trim(),
-        'google_maps_url': _mapsUrl.text.trim().isEmpty ? null : _mapsUrl.text.trim(),
         'is_group': _isGroup,
         'parent_company_id': _isGroup ? null : _parentCompanyId,
       };
@@ -932,12 +954,15 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       for (var a in _addresses) {
         final aEn = (a['en'] as TextEditingController).text.trim();
         final aAr = (a['ar'] as TextEditingController).text.trim();
-        if (aEn.isNotEmpty || aAr.isNotEmpty) {
+        final mapUrl = (a['map_url'] as TextEditingController).text.trim();
+
+        if (aEn.isNotEmpty || aAr.isNotEmpty || mapUrl.isNotEmpty) {
           await Supabase.instance.client.from('company_addresses').insert({
             'company_id': compId,
             'type': a['type'],
             'address_en': aEn.isEmpty ? null : aEn,
             'address_ar': aAr.isEmpty ? null : aAr,
+            'map_url': mapUrl.isEmpty ? null : mapUrl,
           });
         }
       }
@@ -975,7 +1000,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        width: 650,
+        width: 680,
         height: 750,
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -1014,15 +1039,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _mapsUrl,
-                    decoration: InputDecoration(
-                      labelText: s.t('Google Maps Link', 'رابط موقع الخريطة (Google Maps)'),
-                      hintText: 'https://maps.app.goo.gl/...',
-                      prefixIcon: const Icon(Icons.location_on_outlined, color: Colors.redAccent),
-                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -1090,15 +1106,16 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(s.t('2. Addresses', '٢. العناوين والمقرات'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
+                      Text(s.t('2. Addresses & Maps', '٢. العناوين وروابط الخرائط'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
                       TextButton.icon(
                         icon: const Icon(Icons.add_location_alt, size: 18),
                         label: Text(s.t('Add Address', 'إضافة عنوان')),
-                        onPressed: () => setState(() => _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController()})),
+                        onPressed: () => setState(() => _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController(), 'map_url': TextEditingController()})),
                       ),
                     ],
                   ),
@@ -1106,7 +1123,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                     final idx = entry.key;
                     final a = entry.value;
                     return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
+                      margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Column(
@@ -1131,11 +1148,21 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                             TextField(controller: a['en'], decoration: InputDecoration(labelText: s.t('Address (English)', 'العنوان بالإنجليزي'))),
                             const SizedBox(height: 6),
                             TextField(controller: a['ar'], decoration: InputDecoration(labelText: s.t('Address (Arabic)', 'العنوان بالعربي'))),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: a['map_url'],
+                              decoration: InputDecoration(
+                                labelText: s.t('Google Maps Link for this address', 'رابط موقع الخريطة لهذا المقر'),
+                                hintText: 'https://maps.app.goo.gl/...',
+                                prefixIcon: const Icon(Icons.location_on, color: Colors.redAccent, size: 18),
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     );
                   }),
+
                   const SizedBox(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1597,7 +1624,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     widget.onUpdate();
   }
 
-  // 1. تحميل القالب مع الأعمدة الجديدة
+  // 1. تحميل القالب مع عمود Map_URL لكل عنوان
   void _downloadTemplate() {
     var excel = Excel.createExcel();
     Sheet sheet = excel['CompaniesTemplate'];
@@ -1608,10 +1635,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('Company_Name_AR'),
       TextCellValue('Is_Group (TRUE/FALSE)'),
       TextCellValue('Parent_Company_Name'),
-      TextCellValue('Google_Maps_URL'),
       TextCellValue('Address_Type'),
       TextCellValue('Address_EN'),
       TextCellValue('Address_AR'),
+      TextCellValue('Map_URL'),
       TextCellValue('Contact_Name_EN'),
       TextCellValue('Contact_Name_AR'),
       TextCellValue('Contact_Role'),
@@ -1624,10 +1651,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('مجموعة المصرية للخدمات اللوجستية'),
       TextCellValue('TRUE'),
       TextCellValue(''),
-      TextCellValue('https://maps.app.goo.gl/...'),
       TextCellValue('mailing'),
       TextCellValue('Headquarters, Alexandria'),
       TextCellValue('المقر الرئيسي، الإسكندرية'),
+      TextCellValue('https://maps.app.goo.gl/...'),
       TextCellValue('Ahmed Hassan'),
       TextCellValue('أحمد حسن'),
       TextCellValue('Group CEO'),
@@ -1640,10 +1667,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('المصرية للنقل والتخليص الجمركي'),
       TextCellValue('FALSE'),
       TextCellValue('EGL Logistics Group'),
-      TextCellValue('https://maps.app.goo.gl/...'),
       TextCellValue('operation'),
       TextCellValue('Alexandria Port, Gate 27'),
       TextCellValue('ميناء الإسكندرية، باب 27'),
+      TextCellValue('https://maps.app.goo.gl/...'),
       TextCellValue('Mohamed Ali'),
       TextCellValue('محمد علي'),
       TextCellValue('Operations Manager'),
@@ -1657,7 +1684,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
   }
 
-  // 2. تصدير كامل البيانات مع الأعمدة الجديدة
+  // 2. تصدير كامل البيانات
   void _exportCurrentData() {
     var excel = Excel.createExcel();
     Sheet sheet = excel['CorpHub_Export'];
@@ -1668,10 +1695,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('Company_Name_AR'),
       TextCellValue('Is_Group (TRUE/FALSE)'),
       TextCellValue('Parent_Company_Name'),
-      TextCellValue('Google_Maps_URL'),
       TextCellValue('Address_Type'),
       TextCellValue('Address_EN'),
       TextCellValue('Address_AR'),
+      TextCellValue('Map_URL'),
       TextCellValue('Contact_Name_EN'),
       TextCellValue('Contact_Name_AR'),
       TextCellValue('Contact_Role'),
@@ -1691,7 +1718,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
       final isGroupStr = (c['is_group'] == true) ? 'TRUE' : 'FALSE';
       final parentName = c['parent_company_id'] != null ? (idToName[c['parent_company_id'].toString()] ?? '') : '';
-      final mapsUrl = c['google_maps_url'] ?? '';
 
       if (maxRows == 0) {
         sheet.appendRow([
@@ -1699,7 +1725,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           TextCellValue(c['name_ar'] ?? ''),
           TextCellValue(isGroupStr),
           TextCellValue(parentName),
-          TextCellValue(mapsUrl),
+          TextCellValue(''),
           TextCellValue(''),
           TextCellValue(''),
           TextCellValue(''),
@@ -1719,10 +1745,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             TextCellValue(c['name_ar'] ?? ''),
             TextCellValue(isGroupStr),
             TextCellValue(parentName),
-            TextCellValue(mapsUrl),
             TextCellValue(addr?['type'] ?? ''),
             TextCellValue(addr?['address_en'] ?? ''),
             TextCellValue(addr?['address_ar'] ?? ''),
+            TextCellValue(addr?['map_url'] ?? ''),
             TextCellValue(cont?['name_en'] ?? ''),
             TextCellValue(cont?['name_ar'] ?? ''),
             TextCellValue(cont?['role_en'] ?? cont?['role_ar'] ?? ''),
@@ -1784,10 +1810,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           final nameAr = row.length > 1 ? row[1]?.value?.toString().trim() ?? '' : '';
           final isGroupVal = row.length > 2 ? row[2]?.value?.toString().trim().toUpperCase() == 'TRUE' : false;
           final parentName = row.length > 3 ? row[3]?.value?.toString().trim() ?? '' : '';
-          final mapsUrl = row.length > 4 ? row[4]?.value?.toString().trim() : null;
-          final addrType = row.length > 5 ? row[5]?.value?.toString().trim() ?? 'mailing' : 'mailing';
-          final addrEn = row.length > 6 ? row[6]?.value?.toString().trim() : null;
-          final addrAr = row.length > 7 ? row[7]?.value?.toString().trim() : null;
+          final addrType = row.length > 4 ? row[4]?.value?.toString().trim() ?? 'mailing' : 'mailing';
+          final addrEn = row.length > 5 ? row[5]?.value?.toString().trim() : null;
+          final addrAr = row.length > 6 ? row[6]?.value?.toString().trim() : null;
+          final mapUrl = row.length > 7 ? row[7]?.value?.toString().trim() : null;
           final contNameEn = row.length > 8 ? row[8]?.value?.toString().trim() : null;
           final contNameAr = row.length > 9 ? row[9]?.value?.toString().trim() : null;
           final contRole = row.length > 10 ? row[10]?.value?.toString().trim() : null;
@@ -1808,14 +1834,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               'name_en': nameEn.isEmpty ? null : nameEn,
               'name_ar': nameAr.isEmpty ? null : nameAr,
               'is_group': isGroupVal,
-              'google_maps_url': mapsUrl,
               'tax_card_url': taxCardUrl,
             }).select().single();
             compId = ins['id'];
           } else {
             compId = comp['id'];
             final Map<String, dynamic> updateData = {'is_group': isGroupVal};
-            if (mapsUrl != null && mapsUrl.isNotEmpty) updateData['google_maps_url'] = mapsUrl;
             if (taxCardUrl != null && taxCardUrl.isNotEmpty) updateData['tax_card_url'] = taxCardUrl;
             await Supabase.instance.client.from('companies').update(updateData).eq('id', compId);
           }
@@ -1827,12 +1851,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             pendingParentLinks.add({'child_id': compId, 'parent_name': parentName.toLowerCase()});
           }
 
-          if ((addrEn != null && addrEn.isNotEmpty) || (addrAr != null && addrAr.isNotEmpty)) {
+          if ((addrEn != null && addrEn.isNotEmpty) || (addrAr != null && addrAr.isNotEmpty) || (mapUrl != null && mapUrl.isNotEmpty)) {
             await Supabase.instance.client.from('company_addresses').insert({
               'company_id': compId,
               'type': addrType == 'operation' ? 'operation' : 'mailing',
               'address_en': addrEn,
               'address_ar': addrAr,
+              'map_url': mapUrl,
             });
           }
 
