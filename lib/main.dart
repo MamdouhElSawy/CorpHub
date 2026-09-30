@@ -132,6 +132,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   String _searchQuery = '';
   List<Map<String, dynamic>> _companies = [];
   RealtimeChannel? _companiesChannel;
+  RealtimeChannel? _userSessionChannel;
 
   final Map<String, bool> _privacy = {
     'allow_public_read': true,
@@ -154,10 +155,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     if (_companiesChannel != null) {
       Supabase.instance.client.removeChannel(_companiesChannel!);
     }
+    if (_userSessionChannel != null) {
+      Supabase.instance.client.removeChannel(_userSessionChannel!);
+    }
     super.dispose();
   }
 
   void _setupRealtime() {
+    // مراقبة التغييرات في الشركات
     _companiesChannel = Supabase.instance.client
         .channel('public:companies_feed')
         .onPostgresChanges(
@@ -165,6 +170,39 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           schema: 'public',
           table: 'companies',
           callback: (_) => _fetchCompanies(quiet: true),
+        )
+        .subscribe();
+
+    // مراقبة فورية لبيانات المستخدم الحالي لجبر التحديث (Force Sync / Force Re-login)
+    _userSessionChannel = Supabase.instance.client
+        .channel('public:user_sync')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'app_users',
+          callback: (payload) async {
+            if (_currentUser != null) {
+              final updatedId = payload.newRecord['id'] ?? payload.oldRecord['id'];
+              if (updatedId == _currentUser!['id']) {
+                if (payload.eventType == PostgresChangeEvent.delete || payload.newRecord['is_active'] == false) {
+                  // طرد فوري لو اتحذف أو اتعطل
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.remove('saved_user_session');
+                  if (mounted) {
+                    setState(() => _currentUser = null);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(AppState.instance.t('Your session was revoked by administrator.', 'تم إنهاء جلستك من قِبل الإدارة.'))),
+                    );
+                  }
+                } else if (payload.eventType == PostgresChangeEvent.update) {
+                  // تحديث الرتبة والبيانات لحظياً دون تسجيل خروج
+                  setState(() => _currentUser = Map<String, dynamic>.from(payload.newRecord));
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('saved_user_session', jsonEncode(_currentUser));
+                }
+              }
+            }
+          },
         )
         .subscribe();
   }
@@ -603,6 +641,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                               privacy: _privacy,
                               onUpdate: _loadAll,
                               companies: _companies,
+                              currentUserId: _currentUser?['id'],
                             ),
                           ),
                         ),
@@ -777,6 +816,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                   privacy: _privacy,
                                   onUpdate: _loadAll,
                                   companies: _companies,
+                                  currentUserId: _currentUser?['id'],
                                 ),
                               ),
                             ),
@@ -1663,7 +1703,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   }
 }
 
-// ----------------- نافذة الدخول مع خيار Stay Logged In -----------------
+// ----------------- نافذة الدخول -----------------
 class CleanLoginDialog extends StatefulWidget {
   const CleanLoginDialog({super.key});
 
@@ -1711,7 +1751,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
           .maybeSingle();
 
       if (res == null) {
-        setState(() => _error = s.t('Invalid PIN code', 'كود الدخول غير صحيح'));
+        setState(() => _error = s.t('Invalid PIN code or account disabled', 'كود الدخول غير صحيح أو الحساب معطل'));
       } else {
         if (res['is_first_login'] == true) {
           await Supabase.instance.client.from('app_users').update({
@@ -2113,17 +2153,19 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
   }
 }
 
-// ----------------- لوحة تحكم الأدمن والإكسيل المعدل مع Realtime -----------------
+// ----------------- لوحة تحكم الأدمن والإكسيل المعدل مع تحكم كامل بالمستخدمين -----------------
 class AdminPanelScreen extends StatefulWidget {
   final Map<String, bool> privacy;
   final VoidCallback onUpdate;
   final List<Map<String, dynamic>> companies;
+  final String? currentUserId;
 
   const AdminPanelScreen({
     super.key,
     required this.privacy,
     required this.onUpdate,
     required this.companies,
+    this.currentUserId,
   });
 
   @override
@@ -2215,6 +2257,225 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       'value': val,
     });
     widget.onUpdate();
+  }
+
+  // 1. إضافة مستخدم بكود يدوي
+  void _openAddUserDialog() async {
+    final s = AppState.instance;
+    final userCtrl = TextEditingController();
+    final pinCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    String role = 'editor';
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(s.t('Add New User', 'إضافة مستخدم جديد')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: userCtrl, decoration: InputDecoration(hintText: s.t('Username', 'اسم المستخدم'))),
+              const SizedBox(height: 10),
+              TextField(controller: pinCtrl, keyboardType: TextInputType.number, maxLength: 6, decoration: InputDecoration(counterText: '', hintText: s.t('6-Digit PIN (Enter manual code)', 'الكود (أدخل 6 أرقام يدوياً)'))),
+              const SizedBox(height: 10),
+              TextField(controller: passCtrl, decoration: InputDecoration(hintText: s.t('Initial Password', 'كلمة المرور الأولية'))),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                value: role,
+                decoration: InputDecoration(labelText: s.t('Role / Permissions', 'الصلاحية والرتبة')),
+                items: [
+                  DropdownMenuItem(value: 'viewer', child: Text(s.t('Viewer (Read Only)', 'مشاهد (تصفح فقط)'))),
+                  DropdownMenuItem(value: 'editor', child: Text(s.t('Editor (Can Add/Edit)', 'محرر (صلاحية إضافة وتعديل)'))),
+                  DropdownMenuItem(value: 'admin', child: Text(s.t('Admin (Full Control)', 'مدير نظام (تحكم كامل)'))),
+                ],
+                onChanged: (val) => setDialogState(() => role = val!),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.t('Cancel', 'إلغاء'))),
+            ElevatedButton(
+              onPressed: () async {
+                if (userCtrl.text.trim().isEmpty || pinCtrl.text.trim().isEmpty) return;
+                await Supabase.instance.client.from('app_users').insert({
+                  'username': userCtrl.text.trim(),
+                  'pin_code': pinCtrl.text.trim(),
+                  'password_hash': passCtrl.text.trim().isEmpty ? '123456' : passCtrl.text.trim(),
+                  'role': role,
+                  'is_first_login': false,
+                  'is_active': true,
+                });
+                Navigator.pop(ctx);
+                _fetchUsers();
+              },
+              child: Text(s.t('Create User', 'إنشاء المستخدم')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 2. تعديل بيانات المستخدم بالكامل (اسم - كود يدوي - رتبة - حالة)
+  void _openEditUserDialog(Map<String, dynamic> u) {
+    final s = AppState.instance;
+    final userCtrl = TextEditingController(text: u['username'] ?? '');
+    final pinCtrl = TextEditingController(text: u['pin_code'] ?? '');
+    String role = u['role'] ?? 'viewer';
+    bool isActive = u['is_active'] ?? true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text('${s.t("Edit User:", "تعديل المستخدم:")} ${u["username"]}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: userCtrl,
+                decoration: InputDecoration(labelText: s.t('Username', 'اسم المستخدم')),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: pinCtrl,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: InputDecoration(counterText: '', labelText: s.t('PIN Code (6 Digits)', 'كود الدخول (6 أرقام يدوي)')),
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                value: role,
+                decoration: InputDecoration(labelText: s.t('Role', 'الرتبة والصلاحية')),
+                items: const [
+                  DropdownMenuItem(value: 'viewer', child: Text('Viewer (مشاهد)')),
+                  DropdownMenuItem(value: 'editor', child: Text('Editor (محرر)')),
+                  DropdownMenuItem(value: 'admin', child: Text('Admin (مدير)')),
+                ],
+                onChanged: (val) => setDialogState(() => role = val!),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(s.t('Active Account', 'الحساب مفعّل')),
+                value: isActive,
+                onChanged: (val) => setDialogState(() => isActive = val),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.t('Cancel', 'إلغاء'))),
+            ElevatedButton(
+              onPressed: () async {
+                final newName = userCtrl.text.trim();
+                final newPin = pinCtrl.text.trim();
+                if (newName.isEmpty || newPin.isEmpty) return;
+
+                await Supabase.instance.client.from('app_users').update({
+                  'username': newName,
+                  'pin_code': newPin,
+                  'role': role,
+                  'is_active': isActive,
+                }).eq('id', u['id']);
+
+                Navigator.pop(ctx);
+                _fetchUsers();
+                widget.onUpdate();
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(s.t('User updated successfully and synced!', 'تم تعديل وتحديث بيانات المستخدم بنجاح!'))),
+                );
+              },
+              child: Text(s.t('Save Changes', 'حفظ التعديلات')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 3. إعادة تعيين الباسورد مع سؤال الأدمن عن الباسورد الجديد المطلوب
+  void _openCustomPasswordResetDialog(Map<String, dynamic> u) {
+    final s = AppState.instance;
+    final passCtrl = TextEditingController(text: '123456');
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.t('Reset Password', 'تعيين كلمة مرور جديدة')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${s.t("Enter new password for", "اكتب كلمة المرور الجديدة لـ")} ${u["username"]}:'),
+            const SizedBox(height: 10),
+            TextField(
+              controller: passCtrl,
+              decoration: InputDecoration(
+                labelText: s.t('New Password', 'كلمة المرور الجديدة'),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.t('Cancel', 'إلغاء'))),
+          ElevatedButton(
+            onPressed: () async {
+              final newP = passCtrl.text.trim();
+              if (newP.isEmpty) return;
+
+              await Supabase.instance.client.from('app_users').update({'password_hash': newP}).eq('id', u['id']);
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('${s.t("Password updated for", "تم تعيين كلمة المرور الجديدة لـ")} ${u["username"]}')),
+              );
+            },
+            child: Text(s.t('Update Password', 'تعيين الباسورد')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 4. حذف المستخدم نهائياً
+  void _deleteUser(Map<String, dynamic> u) async {
+    final s = AppState.instance;
+    if (widget.currentUserId == u['id']) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.t('You cannot delete your own account!', 'لا يمكنك حذف حسابك الحالي الذي تستخدمه!'))),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.t('Delete User Account?', 'حذف حساب المستخدم نهائياً؟')),
+        content: Text('${s.t("Are you sure you want to permanently delete", "هل أنت متأكد من حذف الحساب بشكل نهائي للمستخدم:")} ${u["username"]} (${u["pin_code"]})؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.t('Cancel', 'إلغاء'))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.t('Delete', 'حذف')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await Supabase.instance.client.from('app_users').delete().eq('id', u['id']);
+      _fetchUsers();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.t('User deleted permanently.', 'تم حذف المستخدم نهائياً.'))),
+      );
+    }
   }
 
   void _openDecisionDialog({
@@ -2686,113 +2947,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
   }
 
-  void _openAddUserDialog() async {
-    final s = AppState.instance;
-    final userCtrl = TextEditingController();
-    final pinCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
-    String role = 'editor';
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.t('Add New User', 'إضافة مستخدم جديد')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: userCtrl, decoration: InputDecoration(hintText: s.t('Username', 'اسم المستخدم'))),
-              const SizedBox(height: 10),
-              TextField(controller: pinCtrl, keyboardType: TextInputType.number, maxLength: 6, decoration: InputDecoration(counterText: '', hintText: s.t('6-Digit PIN', 'الكود (6 أرقام)'))),
-              const SizedBox(height: 10),
-              TextField(controller: passCtrl, decoration: InputDecoration(hintText: s.t('Initial Password', 'كلمة المرور الأولية'))),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                value: role,
-                decoration: InputDecoration(labelText: s.t('Role / Permissions', 'الصلاحية والرتبة')),
-                items: [
-                  DropdownMenuItem(value: 'viewer', child: Text(s.t('Viewer (Read Only)', 'مشاهد (تصفح فقط)'))),
-                  DropdownMenuItem(value: 'editor', child: Text(s.t('Editor (Can Add/Edit)', 'محرر (صلاحية إضافة وتعديل)'))),
-                  DropdownMenuItem(value: 'admin', child: Text(s.t('Admin (Full Control)', 'مدير نظام (تحكم كامل)'))),
-                ],
-                onChanged: (val) => setDialogState(() => role = val!),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.t('Cancel', 'إلغاء'))),
-            ElevatedButton(
-              onPressed: () async {
-                if (userCtrl.text.isEmpty || pinCtrl.text.isEmpty) return;
-                await Supabase.instance.client.from('app_users').insert({
-                  'username': userCtrl.text.trim(),
-                  'pin_code': pinCtrl.text.trim(),
-                  'password_hash': passCtrl.text.trim(),
-                  'role': role,
-                  'is_first_login': false,
-                  'is_active': true,
-                });
-                Navigator.pop(ctx);
-                _fetchUsers();
-              },
-              child: Text(s.t('Create User', 'إنشاء المستخدم')),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _updateUserRole(String id, String newRole) async {
-    await Supabase.instance.client.from('app_users').update({'role': newRole}).eq('id', id);
-    _fetchUsers();
-  }
-
-  void _toggleUserActive(String id, bool currentStatus) async {
-    await Supabase.instance.client.from('app_users').update({'is_active': !currentStatus}).eq('id', id);
-    _fetchUsers();
-  }
-
-  void _resetUserPin(Map<String, dynamic> u) async {
-    final s = AppState.instance;
-    final rand = Random();
-    final newPin = (100000 + rand.nextInt(900000)).toString();
-    await Supabase.instance.client.from('app_users').update({'pin_code': newPin}).eq('id', u['id']);
-    _fetchUsers();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${s.t("New PIN for", "كود الدخول الجديد لـ")} ${u["username"]}: $newPin')),
-    );
-  }
-
-  void _adminResetPasswordDirect(Map<String, dynamic> u) async {
-    final s = AppState.instance;
-    final confirm = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.t('Reset Password', 'إعادة تعيين كلمة المرور')),
-        content: Text(
-          s.t(
-            'Reset password for ${u["username"]} to default: 123456 ?',
-            'هل أنت متأكد من إعادة تعيين كلمة المرور لـ ${u["username"]} إلى الافتراضية: 123456 ؟',
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.t('Cancel', 'إلغاء'))),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.t('Reset', 'إعادة تعيين'))),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await Supabase.instance.client.from('app_users').update({'password_hash': '123456'}).eq('id', u['id']);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${s.t("Password reset for", "تم تعيين كلمة المرور لـ")} ${u["username"]}: 123456')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
@@ -2905,7 +3059,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 2. إدارة المستخدمين
+                // 2. إدارة وتعديل وحذف المستخدمين بحرية كاملة
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
@@ -2927,42 +3081,34 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       final role = u['role'] ?? 'viewer';
 
                       return Card(
+                        margin: const EdgeInsets.only(bottom: 10),
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: role == 'admin' ? Colors.blue : (role == 'editor' ? Colors.green : Colors.grey),
                             child: Icon(role == 'admin' ? Icons.security : (role == 'editor' ? Icons.edit : Icons.remove_red_eye), color: Colors.white),
                           ),
-                          title: Text('${u["username"] ?? "User"} (${u["pin_code"]})'),
+                          title: Text('${u["username"] ?? "User"} (كود: ${u["pin_code"]})', style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text('Role: ${role.toUpperCase()} | Active: $isActive'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              DropdownButton<String>(
-                                value: role,
-                                underline: const SizedBox(),
-                                items: const [
-                                  DropdownMenuItem(value: 'viewer', child: Text('Viewer')),
-                                  DropdownMenuItem(value: 'editor', child: Text('Editor')),
-                                  DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                                ],
-                                onChanged: (newR) {
-                                  if (newR != null) _updateUserRole(u['id'], newR);
-                                },
+                              // زر تعديل شامل (اسم - كود - رتبة - حالة)
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Color(0xFF008DDA)),
+                                tooltip: s.t('Edit User Details', 'تعديل بيانات المستخدم بالكامل'),
+                                onPressed: () => _openEditUserDialog(u),
                               ),
+                              // زر تعيين باسورد مخصص
                               IconButton(
                                 icon: const Icon(Icons.password, color: Colors.orangeAccent),
-                                tooltip: s.t('Reset Password to 123456', 'إعادة تعيين كلمة المرور لـ 123456'),
-                                onPressed: () => _adminResetPasswordDirect(u),
+                                tooltip: s.t('Custom Password Reset', 'تعيين كلمة مرور جديدة من اختيارك'),
+                                onPressed: () => _openCustomPasswordResetDialog(u),
                               ),
+                              // زر حذف المستخدم نهائياً
                               IconButton(
-                                icon: const Icon(Icons.pin),
-                                tooltip: s.t('Reset PIN', 'تغيير الكود'),
-                                onPressed: () => _resetUserPin(u),
-                              ),
-                              IconButton(
-                                icon: Icon(isActive ? Icons.block : Icons.check_circle, color: isActive ? Colors.orange : Colors.green),
-                                tooltip: isActive ? s.t('Disable', 'تعطيل') : s.t('Activate', 'تفعيل'),
-                                onPressed: () => _toggleUserActive(u['id'], isActive),
+                                icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                                tooltip: s.t('Delete User', 'حذف المستخدم نهائياً'),
+                                onPressed: () => _deleteUser(u),
                               ),
                             ],
                           ),
@@ -2972,7 +3118,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 3. طلبات استعادة وتعيين الباسورد
+                // 3. طلبات استعادة وتعيين الباسورد (سجل Log + قرارات)
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
@@ -3034,7 +3180,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   ],
                 ),
 
-                // 4. طلبات الانضمام
+                // 4. طلبات الانضمام (سجل Log + قرارات)
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
