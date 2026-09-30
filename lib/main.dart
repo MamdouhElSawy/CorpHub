@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -130,6 +131,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   bool _loading = true;
   String _searchQuery = '';
   List<Map<String, dynamic>> _companies = [];
+  RealtimeChannel? _companiesChannel;
 
   final Map<String, bool> _privacy = {
     'allow_public_read': true,
@@ -144,6 +146,27 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   void initState() {
     super.initState();
     _checkSavedSessionAndLoad();
+    _setupRealtime();
+  }
+
+  @override
+  void dispose() {
+    if (_companiesChannel != null) {
+      Supabase.instance.client.removeChannel(_companiesChannel!);
+    }
+    super.dispose();
+  }
+
+  void _setupRealtime() {
+    _companiesChannel = Supabase.instance.client
+        .channel('public:companies_feed')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'companies',
+          callback: (_) => _fetchCompanies(quiet: true),
+        )
+        .subscribe();
   }
 
   Future<void> _checkSavedSessionAndLoad() async {
@@ -181,13 +204,18 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _fetchCompanies() async {
+  Future<void> _fetchCompanies({bool quiet = false}) async {
     try {
       final res = await Supabase.instance.client
           .from('companies')
           .select('*, company_addresses(*), company_contacts(*)')
           .order('created_at', ascending: false);
-      _companies = List<Map<String, dynamic>>.from(res);
+      if (mounted) {
+        setState(() {
+          _companies = List<Map<String, dynamic>>.from(res);
+          if (!quiet) _loading = false;
+        });
+      }
     } catch (_) {}
   }
 
@@ -458,7 +486,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  void _shareOnWhatsApp(String? url, String companyName) async {
+  void _shareTaxCardAsImage(String? url, String companyName) async {
     final s = AppState.instance;
     if (url == null || url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -466,10 +494,38 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       );
       return;
     }
-    final msg = '${s.t("Tax Card Document for:", "مستند البطاقة الضريبية لشركة:")} $companyName\n\n$url';
-    final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
-    if (await canLaunchUrl(wa)) {
-      await launchUrl(wa, mode: LaunchMode.externalApplication);
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.t('Preparing image file...', 'جاري تحضير ملف الصورة...'))),
+      );
+
+      final res = await html.HttpRequest.request(url, responseType: 'blob');
+      final blob = res.response as html.Blob;
+      final file = html.File([blob], 'tax_card_${companyName.replaceAll(' ', '_')}.png', {'type': 'image/png'});
+
+      if (html.window.navigator.share != null) {
+        await html.window.navigator.share({
+          'title': '${s.t("Tax Card for", "البطاقة الضريبية لـ")} $companyName',
+          'files': [file],
+        });
+      } else {
+        final anchor = html.AnchorElement(href: html.Url.createObjectUrlFromBlob(blob))
+          ..setAttribute('download', 'tax_card_$companyName.png')
+          ..click();
+        
+        final msg = '${s.t("Tax Card for:", "البطاقة الضريبية لشركة:")} $companyName';
+        final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
+        if (await canLaunchUrl(wa)) {
+          await launchUrl(wa, mode: LaunchMode.externalApplication);
+        }
+      }
+    } catch (_) {
+      final msg = '${s.t("Tax Card Document for:", "مستند البطاقة الضريبية لشركة:")} $companyName\n\n$url';
+      final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
+      if (await canLaunchUrl(wa)) {
+        await launchUrl(wa, mode: LaunchMode.externalApplication);
+      }
     }
   }
 
@@ -487,7 +543,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       return nameAr.contains(q) || nameEn.contains(q);
     }).toList();
 
-    // الترتيب الأبجدي المتجاوب مع اللغة
     filtered.sort((a, b) {
       final strA = s.isArabic
           ? (a['name_ar']?.toString().trim().isNotEmpty == true ? a['name_ar'] : a['name_en'] ?? '')
@@ -833,7 +888,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                   onEdit: () => _openAddEditCompanyDialog(comp),
                                   onDelete: () => _deleteSingleCompany(comp),
                                   onViewTaxCard: () => _viewTaxCardImage(comp['tax_card_url'], compName),
-                                  onShare: () => _shareOnWhatsApp(comp['tax_card_url'], compName),
+                                  onShare: () => _shareTaxCardAsImage(comp['tax_card_url'], compName),
                                 );
                               },
                             ),
@@ -978,7 +1033,7 @@ class CompanyCard extends StatelessWidget {
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
                         icon: const Icon(Icons.share, size: 16),
-                        label: Text(s.t('WhatsApp Card', 'واتساب البطاقة')),
+                        label: Text(s.t('Share Image (واتساب)', 'إرسال صورة بالواتساب')),
                         onPressed: onShare,
                       ),
                     ],
@@ -2058,7 +2113,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
   }
 }
 
-// ----------------- لوحة تحكم الأدمن والإكسيل المعدل -----------------
+// ----------------- لوحة تحكم الأدمن والإكسيل المعدل مع Realtime -----------------
 class AdminPanelScreen extends StatefulWidget {
   final Map<String, bool> privacy;
   final VoidCallback onUpdate;
@@ -2082,6 +2137,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   List<Map<String, dynamic>> _resets = [];
   bool _busy = false;
 
+  RealtimeChannel? _adminChannel;
+
   @override
   void initState() {
     super.initState();
@@ -2089,20 +2146,56 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _fetchUsers();
     _fetchRequests();
     _fetchResets();
+    _setupAdminRealtime();
+  }
+
+  @override
+  void dispose() {
+    if (_adminChannel != null) {
+      Supabase.instance.client.removeChannel(_adminChannel!);
+    }
+    super.dispose();
+  }
+
+  void _setupAdminRealtime() {
+    _adminChannel = Supabase.instance.client
+        .channel('public:admin_feed')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'access_requests',
+          callback: (_) => _fetchRequests(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'password_resets',
+          callback: (_) => _fetchResets(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'app_users',
+          callback: (_) => _fetchUsers(),
+        )
+        .subscribe();
   }
 
   void _fetchUsers() async {
-    final res = await Supabase.instance.client.from('app_users').select().order('created_at');
-    setState(() => _users = List<Map<String, dynamic>>.from(res));
+    try {
+      final res = await Supabase.instance.client.from('app_users').select().order('created_at');
+      if (mounted) setState(() => _users = List<Map<String, dynamic>>.from(res));
+    } catch (_) {}
   }
 
   void _fetchRequests() async {
-    final res = await Supabase.instance.client
-        .from('access_requests')
-        .select()
-        .eq('status', 'pending')
-        .order('created_at', ascending: false);
-    setState(() => _requests = List<Map<String, dynamic>>.from(res));
+    try {
+      final res = await Supabase.instance.client
+          .from('access_requests')
+          .select()
+          .order('created_at', ascending: false);
+      if (mounted) setState(() => _requests = List<Map<String, dynamic>>.from(res));
+    } catch (_) {}
   }
 
   void _fetchResets() async {
@@ -2110,9 +2203,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       final res = await Supabase.instance.client
           .from('password_resets')
           .select()
-          .eq('status', 'pending')
           .order('created_at', ascending: false);
-      setState(() => _resets = List<Map<String, dynamic>>.from(res));
+      if (mounted) setState(() => _resets = List<Map<String, dynamic>>.from(res));
     } catch (_) {}
   }
 
@@ -2123,6 +2215,172 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       'value': val,
     });
     widget.onUpdate();
+  }
+
+  void _openDecisionDialog({
+    required String title,
+    required String targetPhone,
+    required String defaultNotifyMsg,
+    required Function(String status, String notes, bool notifyWhatsApp) onConfirm,
+  }) {
+    final s = AppState.instance;
+    final notesController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => Directionality(
+        textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.t('Reason / Custom Message (Optional):', 'السبب / نص الرسالة المخصصة (اختياري):')),
+              const SizedBox(height: 8),
+              TextField(
+                controller: notesController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: s.t('Write message or reason here...', 'اكتب ملاحظة أو سبب القرار هنا...'),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(s.t('Cancel', 'إلغاء')),
+            ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.save, size: 16),
+              label: Text(s.t('Save Only', 'حفظ فقط')),
+              onPressed: () {
+                Navigator.pop(ctx);
+                onConfirm('saved', notesController.text.trim(), false);
+              },
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+              icon: const Icon(Icons.send, size: 16),
+              label: Text(s.t('Save & Notify', 'حفظ وإخطار')),
+              onPressed: () {
+                Navigator.pop(ctx);
+                onConfirm('saved', notesController.text.trim(), true);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleAccessRequestDecision(Map<String, dynamic> req, bool isApprove) {
+    final s = AppState.instance;
+    final phone = req['phone'].toString().replaceAll(RegExp(r'[^0-9]'), '');
+    final name = req['full_name'];
+
+    _openDecisionDialog(
+      title: isApprove ? s.t('Approve Account Request', 'قبول طلب الانضمام') : s.t('Reject Account Request', 'رفض طلب الانضمام'),
+      targetPhone: phone,
+      defaultNotifyMsg: '',
+      onConfirm: (status, notes, notifyWhatsApp) async {
+        setState(() => _busy = true);
+        try {
+          if (isApprove) {
+            final rand = Random();
+            final pin = (100000 + rand.nextInt(900000)).toString();
+            final pass = 'Corp@${rand.nextInt(9000) + 1000}';
+
+            await Supabase.instance.client.from('app_users').insert({
+              'username': name,
+              'password_hash': pass,
+              'pin_code': pin,
+              'role': 'viewer',
+              'is_first_login': false,
+            });
+
+            await Supabase.instance.client.from('access_requests').update({
+              'status': 'approved',
+              'admin_notes': notes.isEmpty ? null : notes,
+            }).eq('id', req['id']);
+
+            if (notifyWhatsApp) {
+              final msg = 'Welcome to CorpHub, $name!\nYour account has been approved.\nPIN: $pin\nPassword: $pass' + (notes.isNotEmpty ? '\nNote: $notes' : '');
+              final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
+              if (await canLaunchUrl(waUri)) launchUrl(waUri, mode: LaunchMode.externalApplication);
+            }
+          } else {
+            await Supabase.instance.client.from('access_requests').update({
+              'status': 'rejected',
+              'admin_notes': notes.isEmpty ? null : notes,
+            }).eq('id', req['id']);
+
+            if (notifyWhatsApp) {
+              final msg = 'Hello $name,\nRegarding your CorpHub registration request: It has not been approved at this time.' + (notes.isNotEmpty ? '\nReason: $notes' : '');
+              final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
+              if (await canLaunchUrl(waUri)) launchUrl(waUri, mode: LaunchMode.externalApplication);
+            }
+          }
+          _fetchRequests();
+          _fetchUsers();
+        } finally {
+          setState(() => _busy = false);
+        }
+      },
+    );
+  }
+
+  void _handlePasswordResetDecision(Map<String, dynamic> r, bool isApprove) {
+    final s = AppState.instance;
+    final phone = r['phone'].toString().replaceAll(RegExp(r'[^0-9]'), '');
+    final pin = r['pin_code'];
+    final newPass = r['new_password'];
+
+    _openDecisionDialog(
+      title: isApprove ? s.t('Approve Password Reset', 'اعتماد استعادة كلمة المرور') : s.t('Reject Password Reset', 'رفض طلب استعادة كلمة المرور'),
+      targetPhone: phone,
+      defaultNotifyMsg: '',
+      onConfirm: (status, notes, notifyWhatsApp) async {
+        setState(() => _busy = true);
+        try {
+          if (isApprove) {
+            await Supabase.instance.client
+                .from('app_users')
+                .update({'password_hash': newPass})
+                .eq('pin_code', pin);
+
+            await Supabase.instance.client.from('password_resets').update({
+              'status': 'approved',
+              'admin_notes': notes.isEmpty ? null : notes,
+            }).eq('id', r['id']);
+
+            if (notifyWhatsApp) {
+              final msg = 'Hello! Your password reset request for PIN ($pin) has been approved. You can now login with your new password.' + (notes.isNotEmpty ? '\nNote: $notes' : '');
+              final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
+              if (await canLaunchUrl(waUri)) launchUrl(waUri, mode: LaunchMode.externalApplication);
+            }
+          } else {
+            await Supabase.instance.client.from('password_resets').update({
+              'status': 'rejected',
+              'admin_notes': notes.isEmpty ? null : notes,
+            }).eq('id', r['id']);
+
+            if (notifyWhatsApp) {
+              final msg = 'Hello! Your password reset request for PIN ($pin) has been rejected.' + (notes.isNotEmpty ? '\nReason: $notes' : '');
+              final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
+              if (await canLaunchUrl(waUri)) launchUrl(waUri, mode: LaunchMode.externalApplication);
+            }
+          }
+          _fetchResets();
+        } finally {
+          setState(() => _busy = false);
+        }
+      },
+    );
   }
 
   void _downloadTemplate() {
@@ -2535,39 +2793,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
   }
 
-  void _approvePasswordReset(Map<String, dynamic> r) async {
-    final s = AppState.instance;
-    try {
-      final pin = r['pin_code'];
-      final newPass = r['new_password'];
-
-      await Supabase.instance.client
-          .from('app_users')
-          .update({'password_hash': newPass})
-          .eq('pin_code', pin);
-
-      await Supabase.instance.client
-          .from('password_resets')
-          .update({'status': 'approved'})
-          .eq('id', r['id']);
-
-      _fetchResets();
-
-      final phone = r['phone'].toString().replaceAll(RegExp(r'[^0-9]'), '');
-      final msg = 'Hello! Your password reset request for CorpHub has been approved. You can now login with your new password.';
-      final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
-      if (await canLaunchUrl(waUri)) {
-        await launchUrl(waUri, mode: LaunchMode.externalApplication);
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.t('Password reset approved successfully!', 'تم اعتماد كلمة المرور الجديدة وتحديثها بنجاح!'))),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
@@ -2584,7 +2809,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             Tab(icon: const Icon(Icons.table_chart), text: s.t('Excel Operations', 'إدارة الإكسيل')),
             Tab(icon: const Icon(Icons.people), text: s.t('User Panel', 'إدارة المستخدمين')),
             Tab(icon: const Icon(Icons.lock_reset), text: s.t('Password Resets (${_resets.length})', 'استعادة الباسورد (${_resets.length})')),
-            Tab(icon: const Icon(Icons.mark_email_unread), text: s.t('Requests', 'طلبات الانضمام')),
+            Tab(icon: const Icon(Icons.mark_email_unread), text: s.t('Requests (${_requests.length})', 'طلبات الانضمام (${_requests.length})')),
           ],
         ),
       ),
@@ -2593,6 +2818,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           : TabBarView(
               controller: _tabController,
               children: [
+                // 1. الإكسيل
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
@@ -2750,75 +2976,123 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
-                    Text(s.t('Pending Password Resets (${_resets.length})', 'طلبات تعيين كلمة المرور المعلقة (${_resets.length})'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    Text(s.t('Password Resets Log', 'سجل طلبات استعادة كلمة المرور'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                     const SizedBox(height: 12),
                     if (_resets.isEmpty)
-                      Text(s.t('No pending password reset requests', 'لا توجد طلبات استعادة معلقة حالياً'))
+                      Text(s.t('No password reset records found', 'لا توجد سجلات استعادة'))
                     else
-                      ..._resets.map((r) => Card(
-                            child: ListTile(
-                              leading: const CircleAvatar(
-                                backgroundColor: Colors.amber,
-                                child: Icon(Icons.lock_reset, color: Colors.white),
-                              ),
-                              title: Text('${s.t("User PIN:", "كود المستخدم:")} ${r["pin_code"]}'),
-                              subtitle: Text('${s.t("Phone:", "الهاتف:")} ${r["phone"]}\n${s.t("Password: [Secured & Hidden]", "كلمة المرور: [مشفرة ومحمية من العرض]")}'),
-                              isThreeLine: true,
-                              trailing: ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
-                                icon: const Icon(Icons.check, size: 16),
-                                label: Text(s.t('Approve & Notify', 'اعتماد وإخطار واتساب')),
-                                onPressed: () => _approvePasswordReset(r),
-                              ),
+                      ..._resets.map((r) {
+                        final status = r['status'] ?? 'pending';
+                        final isPending = status == 'pending';
+                        final notes = r['admin_notes'];
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    CircleAvatar(
+                                      backgroundColor: status == 'approved' ? Colors.green : (status == 'rejected' ? Colors.red : Colors.amber),
+                                      child: Icon(status == 'approved' ? Icons.check : (status == 'rejected' ? Icons.close : Icons.lock_reset), color: Colors.white, size: 20),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('${s.t("PIN:", "الكود:")} ${r["pin_code"]} | ${s.t("Phone:", "الهاتف:")} ${r["phone"]}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                          Text('${s.t("Status:", "الحالة:")} ${status.toUpperCase()}', style: TextStyle(color: status == 'approved' ? Colors.green : (status == 'rejected' ? Colors.redAccent : Colors.orange), fontSize: 12, fontWeight: FontWeight.bold)),
+                                          if (notes != null && notes.isNotEmpty)
+                                            Text('${s.t("Note/Reason:", "السبب/الملاحظة:")} $notes', style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isPending) ...[
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                                        onPressed: () => _handlePasswordResetDecision(r, true),
+                                        child: Text(s.t('Approve', 'موافقة')),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                                        onPressed: () => _handlePasswordResetDecision(r, false),
+                                        child: Text(s.t('Reject', 'رفض')),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
                             ),
-                          )),
+                          ),
+                        );
+                      }),
                   ],
                 ),
 
                 // 4. طلبات الانضمام
                 ListView(
-                  padding: const EdgeInsets.all(20),
+                  padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
-                    Text(s.t('Pending Access Requests (${_requests.length})', 'طلبات الانضمام المعلقة (${_requests.length})'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    Text(s.t('Access Requests Log', 'سجل طلبات الانضمام'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                     const SizedBox(height: 12),
                     if (_requests.isEmpty)
-                      Text(s.t('No pending requests found', 'لا توجد طلبات معلقة حالياً'))
+                      Text(s.t('No access requests found', 'لا توجد طلبات انضمام مسجلة'))
                     else
-                      ..._requests.map((r) => Card(
-                            child: ListTile(
-                              title: Text(r['full_name']),
-                              subtitle: Text(r['phone']),
-                              trailing: ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
-                                icon: const Icon(Icons.check, size: 16),
-                                label: Text(s.t('Approve & WhatsApp', 'قبول وإرسال واتساب')),
-                                onPressed: () async {
-                                  final rand = Random();
-                                  final pin = (100000 + rand.nextInt(900000)).toString();
-                                  final pass = 'Corp@${rand.nextInt(9000) + 1000}';
+                      ..._requests.map((req) {
+                        final status = req['status'] ?? 'pending';
+                        final isPending = status == 'pending';
+                        final notes = req['admin_notes'];
 
-                                  await Supabase.instance.client.from('app_users').insert({
-                                    'username': r['full_name'],
-                                    'password_hash': pass,
-                                    'pin_code': pin,
-                                    'role': 'viewer',
-                                    'is_first_login': false,
-                                  });
-
-                                  await Supabase.instance.client.from('access_requests').update({'status': 'approved'}).eq('id', r['id']);
-                                  _fetchRequests();
-                                  _fetchUsers();
-
-                                  final phone = r['phone'].toString().replaceAll(RegExp(r'[^0-9]'), '');
-                                  final msg = 'Welcome to CorpHub!\nYour login details are:\nPIN: $pin\nPassword: $pass';
-                                  final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
-                                  if (await canLaunchUrl(waUri)) {
-                                    await launchUrl(waUri, mode: LaunchMode.externalApplication);
-                                  }
-                                },
-                              ),
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    CircleAvatar(
+                                      backgroundColor: status == 'approved' ? Colors.green : (status == 'rejected' ? Colors.red : Colors.blue),
+                                      child: Icon(status == 'approved' ? Icons.check : (status == 'rejected' ? Icons.close : Icons.person), color: Colors.white, size: 20),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('${req["full_name"]} (${req["phone"]})', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                          Text('${s.t("Status:", "الحالة:")} ${status.toUpperCase()}', style: TextStyle(color: status == 'approved' ? Colors.green : (status == 'rejected' ? Colors.redAccent : Colors.orange), fontSize: 12, fontWeight: FontWeight.bold)),
+                                          if (notes != null && notes.isNotEmpty)
+                                            Text('${s.t("Note/Reason:", "السبب/الملاحظة:")} $notes', style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isPending) ...[
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                                        onPressed: () => _handleAccessRequestDecision(req, true),
+                                        child: Text(s.t('Approve', 'موافقة')),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                                        onPressed: () => _handleAccessRequestDecision(req, false),
+                                        child: Text(s.t('Reject', 'رفض')),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
                             ),
-                          )),
+                          ),
+                        );
+                      }),
                   ],
                 ),
               ],
