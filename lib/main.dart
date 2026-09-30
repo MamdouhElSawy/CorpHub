@@ -21,8 +21,6 @@ void main() async {
   }
 
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
-  
-  // تحميل إعدادات اللغة والثيم المحفوظة للمستخدم/الزائر مسبقاً
   await AppState.instance.loadSavedPreferences();
 
   runApp(const CorpHubApp());
@@ -33,7 +31,7 @@ class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
 
-  bool isArabic = false; // الافتراضي إنجليزي
+  bool isArabic = false;
   ThemeMode themeMode = ThemeMode.dark;
 
   Future<void> loadSavedPreferences() async {
@@ -197,7 +195,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     return r == 'admin' || r == 'editor';
   }
 
-  // دالة مسح شركة واحدة منفصلة
   Future<void> _deleteSingleCompany(Map<String, dynamic> company) async {
     final s = AppState.instance;
     final name = s.isArabic
@@ -236,15 +233,17 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         await Supabase.instance.client.from('company_addresses').delete().eq('company_id', compId);
         await Supabase.instance.client.from('companies').delete().eq('id', compId);
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.t('Company deleted successfully', 'تم حذف الشركة بنجاح'))),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(s.t('Company deleted successfully', 'تم حذف الشركة بنجاح'))),
+          );
+        }
         _loadAll();
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-        setState(() => _loading = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+          setState(() => _loading = false);
+        }
       }
     }
   }
@@ -269,25 +268,19 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               TextField(
                 controller: oldPassCtrl,
                 obscureText: true,
-                decoration: InputDecoration(
-                  labelText: s.t('Current Password', 'كلمة المرور الحالية'),
-                ),
+                decoration: InputDecoration(labelText: s.t('Current Password', 'كلمة المرور الحالية')),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: newPassCtrl,
                 obscureText: true,
-                decoration: InputDecoration(
-                  labelText: s.t('New Password', 'كلمة المرور الجديدة'),
-                ),
+                decoration: InputDecoration(labelText: s.t('New Password', 'كلمة المرور الجديدة')),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: confirmPassCtrl,
                 obscureText: true,
-                decoration: InputDecoration(
-                  labelText: s.t('Confirm New Password', 'تأكيد كلمة المرور الجديدة'),
-                ),
+                decoration: InputDecoration(labelText: s.t('Confirm New Password', 'تأكيد كلمة المرور الجديدة')),
               ),
               if (err != null) ...[
                 const SizedBox(height: 10),
@@ -465,6 +458,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       barrierDismissible: false,
       builder: (_) => AdvancedCompanyDialog(
         company: company,
+        allCompanies: _companies,
         onDeleteRequested: company != null ? () => _deleteSingleCompany(company) : null,
       ),
     );
@@ -576,6 +570,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                 final comp = filtered[i];
                                 return CompanyCard(
                                   company: comp,
+                                  allCompanies: _companies,
                                   isLoggedIn: isLoggedIn,
                                   canEdit: _canEdit,
                                   privacy: _privacy,
@@ -595,9 +590,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 }
 
-// ----------------- كارت عرض الشركة مع زري التعديل والحذف -----------------
+// ----------------- كارت عرض الشركة -----------------
 class CompanyCard extends StatelessWidget {
   final Map<String, dynamic> company;
+  final List<Map<String, dynamic>> allCompanies;
   final bool isLoggedIn;
   final bool canEdit;
   final Map<String, bool> privacy;
@@ -608,6 +604,7 @@ class CompanyCard extends StatelessWidget {
   const CompanyCard({
     super.key,
     required this.company,
+    required this.allCompanies,
     required this.isLoggedIn,
     required this.canEdit,
     required this.privacy,
@@ -615,6 +612,14 @@ class CompanyCard extends StatelessWidget {
     required this.onDelete,
     required this.onShare,
   });
+
+  void _openMaps(String? url) async {
+    if (url == null || url.trim().isEmpty) return;
+    final uri = Uri.parse(url.trim());
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -625,6 +630,7 @@ class CompanyCard extends StatelessWidget {
     final showPhones = isLoggedIn || (privacy['public_show_phones'] ?? false);
     final showMailing = isLoggedIn || (privacy['public_show_mailing_addresses'] ?? true);
     final showOps = isLoggedIn || (privacy['public_show_operation_addresses'] ?? false);
+    final showRelations = isLoggedIn || (privacy['public_show_relations'] ?? true);
 
     final addresses = (company['company_addresses'] as List? ?? []).where((a) {
       if (a['type'] == 'mailing') return showMailing;
@@ -633,18 +639,56 @@ class CompanyCard extends StatelessWidget {
     }).toList();
 
     final contacts = (company['company_contacts'] as List? ?? []);
+    final isGroup = company['is_group'] == true;
+    final parentId = company['parent_company_id'];
+    final mapsUrl = company['google_maps_url']?.toString();
+
+    String? parentName;
+    if (parentId != null) {
+      final parent = allCompanies.firstWhere((c) => c['id'] == parentId, orElse: () => {});
+      if (parent.isNotEmpty) {
+        parentName = s.isArabic ? (parent['name_ar'] ?? parent['name_en']) : (parent['name_en'] ?? parent['name_ar']);
+      }
+    }
 
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: ExpansionTile(
         leading: CircleAvatar(
-          backgroundColor: Theme.of(context).primaryColor.withOpacity(0.15),
-          child: Icon(Icons.corporate_fare, color: Theme.of(context).primaryColor),
+          backgroundColor: isGroup ? Colors.amber.withOpacity(0.2) : Theme.of(context).primaryColor.withOpacity(0.15),
+          child: Icon(
+            isGroup ? Icons.account_tree : Icons.corporate_fare,
+            color: isGroup ? Colors.amber.shade800 : Theme.of(context).primaryColor,
+          ),
         ),
         title: Row(
           children: [
-            Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                      if (isGroup) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.amber.shade800, borderRadius: BorderRadius.circular(4)),
+                          child: Text(s.t('Group / Holding', 'مجموعة قابضة'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (showRelations && parentName != null)
+                    Text(
+                      '${s.t("Subsidiary of:", "تابعة لمجموعة:")} $parentName',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                    ),
+                ],
+              ),
+            ),
             if (canEdit) ...[
               IconButton(
                 icon: const Icon(Icons.edit, size: 20, color: Color(0xFF008DDA)),
@@ -665,17 +709,24 @@ class CompanyCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    if (showTax && company['tax_card_url'] != null) ...[
+                    if (showTax && company['tax_card_url'] != null)
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
                         icon: const Icon(Icons.share, size: 16),
                         label: Text(s.t('WhatsApp Card', 'واتساب البطاقة')),
                         onPressed: onShare,
                       ),
-                      const SizedBox(width: 8),
-                    ],
+                    if (mapsUrl != null && mapsUrl.isNotEmpty)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                        icon: const Icon(Icons.location_on, size: 16),
+                        label: Text(s.t('Google Maps', 'الموقع على الخريطة')),
+                        onPressed: () => _openMaps(mapsUrl),
+                      ),
                     OutlinedButton.icon(
                       icon: const Icon(Icons.print, size: 16),
                       label: Text(s.t('Selective Print', 'طباعة مخصصة')),
@@ -716,9 +767,13 @@ class CompanyCard extends StatelessWidget {
                       trailing: showPhones
                           ? IconButton(
                               icon: const Icon(Icons.copy, size: 18),
+                              tooltip: s.t('Copy Contact', 'نسخ جهة الاتصال'),
                               onPressed: () {
-                                Clipboard.setData(ClipboardData(text: c['phone'] ?? ''));
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Copied to clipboard', 'تم النسخ'))));
+                                final formattedContact = "Name : $cName\nNumber: $phone";
+                                Clipboard.setData(ClipboardData(text: formattedContact));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(s.t('Contact copied to clipboard!', 'تم نسخ جهة الاتصال إلى الحافظة!'))),
+                                );
                               },
                             )
                           : null,
@@ -734,12 +789,18 @@ class CompanyCard extends StatelessWidget {
   }
 }
 
-// ----------------- استمارة إضافة وتعديل الشركة مع زر حذف الريكورد -----------------
+// ----------------- استمارة إضافة وتعديل الشركة -----------------
 class AdvancedCompanyDialog extends StatefulWidget {
   final Map<String, dynamic>? company;
+  final List<Map<String, dynamic>> allCompanies;
   final VoidCallback? onDeleteRequested;
 
-  const AdvancedCompanyDialog({super.key, this.company, this.onDeleteRequested});
+  const AdvancedCompanyDialog({
+    super.key,
+    this.company,
+    required this.allCompanies,
+    this.onDeleteRequested,
+  });
 
   @override
   State<AdvancedCompanyDialog> createState() => _AdvancedCompanyDialogState();
@@ -749,7 +810,12 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   final _nameEn = TextEditingController();
   final _nameAr = TextEditingController();
   final _taxCardUrl = TextEditingController();
+  final _mapsUrl = TextEditingController();
+  bool _isGroup = false;
+  String? _parentCompanyId;
+
   bool _saving = false;
+  bool _uploadingTaxCard = false;
 
   final List<Map<String, dynamic>> _addresses = [];
   final List<Map<String, dynamic>> _contacts = [];
@@ -761,6 +827,9 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       _nameEn.text = widget.company!['name_en'] ?? '';
       _nameAr.text = widget.company!['name_ar'] ?? '';
       _taxCardUrl.text = widget.company!['tax_card_url'] ?? '';
+      _mapsUrl.text = widget.company!['google_maps_url'] ?? '';
+      _isGroup = widget.company!['is_group'] == true;
+      _parentCompanyId = widget.company!['parent_company_id'];
 
       final rawAddrs = widget.company!['company_addresses'] as List? ?? [];
       for (var a in rawAddrs) {
@@ -786,6 +855,47 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
     }
   }
 
+  Future<void> _pickAndUploadTaxCard() async {
+    final s = AppState.instance;
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+        withData: true,
+      );
+
+      if (res == null || res.files.single.bytes == null) return;
+
+      setState(() => _uploadingTaxCard = true);
+      final fileBytes = res.files.single.bytes!;
+      final ext = res.files.single.extension ?? 'png';
+      final fileName = 'tax_card_${DateTime.now().millisecondsSinceEpoch}.$ext';
+
+      await Supabase.instance.client.storage.from('tax_cards').uploadBinary(
+            fileName,
+            fileBytes,
+            fileOptions: FileOptions(upsert: true, contentType: 'image/$ext'),
+          );
+
+      final publicUrl = Supabase.instance.client.storage.from('tax_cards').getPublicUrl(fileName);
+      setState(() {
+        _taxCardUrl.text = publicUrl;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(s.t('Tax card uploaded successfully!', 'تم رفع صورة البطاقة الضريبية بنجاح!'))),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingTaxCard = false);
+    }
+  }
+
   void _saveAll() async {
     final s = AppState.instance;
     final en = _nameEn.text.trim();
@@ -803,6 +913,9 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
         'name_en': en.isEmpty ? null : en,
         'name_ar': ar.isEmpty ? null : ar,
         'tax_card_url': _taxCardUrl.text.trim().isEmpty ? null : _taxCardUrl.text.trim(),
+        'google_maps_url': _mapsUrl.text.trim().isEmpty ? null : _mapsUrl.text.trim(),
+        'is_group': _isGroup,
+        'parent_company_id': _isGroup ? null : _parentCompanyId,
       };
 
       String compId;
@@ -857,12 +970,13 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
+    final potentialParents = widget.allCompanies.where((c) => c['id'] != widget.company?['id']).toList();
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 650,
-        height: 720,
+        height: 750,
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
@@ -901,12 +1015,81 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   TextField(
-                    controller: _taxCardUrl,
-                    decoration: InputDecoration(labelText: s.t('Tax Card Image URL', 'رابط صورة البطاقة الضريبية'), prefixIcon: const Icon(Icons.image)),
+                    controller: _mapsUrl,
+                    decoration: InputDecoration(
+                      labelText: s.t('Google Maps Link', 'رابط موقع الخريطة (Google Maps)'),
+                      hintText: 'https://maps.app.goo.gl/...',
+                      prefixIcon: const Icon(Icons.location_on_outlined, color: Colors.redAccent),
+                    ),
                   ),
-
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _taxCardUrl,
+                          decoration: InputDecoration(
+                            labelText: s.t('Tax Card Image URL', 'رابط صورة البطاقة الضريبية'),
+                            prefixIcon: const Icon(Icons.image),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
+                        icon: _uploadingTaxCard ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.upload_file),
+                        label: Text(s.t('Upload', 'رفع صورة')),
+                        onPressed: _uploadingTaxCard ? null : _pickAndUploadTaxCard,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(s.t('Is Parent / Holding Group?', 'هل هي شركة أم / مجموعة رئيسية؟')),
+                          value: _isGroup,
+                          onChanged: (val) {
+                            setState(() {
+                              _isGroup = val;
+                              if (val) _parentCompanyId = null;
+                            });
+                          },
+                        ),
+                        if (!_isGroup) ...[
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<String>(
+                            value: _parentCompanyId,
+                            decoration: InputDecoration(
+                              labelText: s.t('Subsidiary of (Select Parent)', 'شركة تابعة لـ (اختر الشركة الأم)'),
+                              border: const OutlineInputBorder(),
+                            ),
+                            items: [
+                              DropdownMenuItem<String>(
+                                value: null,
+                                child: Text(s.t('-- None (Independent) --', '-- لا يوجد (شركة مستقلة) --')),
+                              ),
+                              ...potentialParents.map((p) {
+                                final pName = s.isArabic ? (p['name_ar'] ?? p['name_en'] ?? '') : (p['name_en'] ?? p['name_ar'] ?? '');
+                                return DropdownMenuItem<String>(value: p['id'].toString(), child: Text(pName));
+                              }),
+                            ],
+                            onChanged: (val) => setState(() => _parentCompanyId = val),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -953,7 +1136,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                       ),
                     );
                   }),
-
                   const SizedBox(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1004,7 +1186,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                       ),
                     );
                   }),
-
                   if (widget.company != null && widget.onDeleteRequested != null) ...[
                     const Divider(height: 36),
                     ListTile(
@@ -1362,7 +1543,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
   }
 }
 
-// ----------------- لوحة تحكم الأدمن -----------------
+// ----------------- لوحة تحكم الأدمن والإكسيل المعدل -----------------
 class AdminPanelScreen extends StatefulWidget {
   final Map<String, bool> privacy;
   final VoidCallback onUpdate;
@@ -1416,6 +1597,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     widget.onUpdate();
   }
 
+  // 1. تحميل القالب مع الأعمدة الجديدة
   void _downloadTemplate() {
     var excel = Excel.createExcel();
     Sheet sheet = excel['CompaniesTemplate'];
@@ -1424,6 +1606,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     sheet.appendRow([
       TextCellValue('Company_Name_EN'),
       TextCellValue('Company_Name_AR'),
+      TextCellValue('Is_Group (TRUE/FALSE)'),
+      TextCellValue('Parent_Company_Name'),
+      TextCellValue('Google_Maps_URL'),
       TextCellValue('Address_Type'),
       TextCellValue('Address_EN'),
       TextCellValue('Address_AR'),
@@ -1435,16 +1620,35 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     ]);
 
     sheet.appendRow([
-      TextCellValue('EGL Logistics'),
-      TextCellValue('المصرية للخدمات اللوجستية'),
+      TextCellValue('EGL Logistics Group'),
+      TextCellValue('مجموعة المصرية للخدمات اللوجستية'),
+      TextCellValue('TRUE'),
+      TextCellValue(''),
+      TextCellValue('https://maps.app.goo.gl/...'),
+      TextCellValue('mailing'),
+      TextCellValue('Headquarters, Alexandria'),
+      TextCellValue('المقر الرئيسي، الإسكندرية'),
+      TextCellValue('Ahmed Hassan'),
+      TextCellValue('أحمد حسن'),
+      TextCellValue('Group CEO'),
+      TextCellValue('+201200000000'),
+      TextCellValue('https://...'),
+    ]);
+
+    sheet.appendRow([
+      TextCellValue('EGL Transport & Customs'),
+      TextCellValue('المصرية للنقل والتخليص الجمركي'),
+      TextCellValue('FALSE'),
+      TextCellValue('EGL Logistics Group'),
+      TextCellValue('https://maps.app.goo.gl/...'),
       TextCellValue('operation'),
       TextCellValue('Alexandria Port, Gate 27'),
       TextCellValue('ميناء الإسكندرية، باب 27'),
-      TextCellValue('Ahmed Hassan'),
-      TextCellValue('أحمد حسن'),
-      TextCellValue('Operations Director'),
-      TextCellValue('+201200000000'),
-      TextCellValue('https://...'),
+      TextCellValue('Mohamed Ali'),
+      TextCellValue('محمد علي'),
+      TextCellValue('Operations Manager'),
+      TextCellValue('+201211111111'),
+      TextCellValue(''),
     ]);
 
     final bytes = excel.encode();
@@ -1453,6 +1657,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
   }
 
+  // 2. تصدير كامل البيانات مع الأعمدة الجديدة
   void _exportCurrentData() {
     var excel = Excel.createExcel();
     Sheet sheet = excel['CorpHub_Export'];
@@ -1461,6 +1666,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     sheet.appendRow([
       TextCellValue('Company_Name_EN'),
       TextCellValue('Company_Name_AR'),
+      TextCellValue('Is_Group (TRUE/FALSE)'),
+      TextCellValue('Parent_Company_Name'),
+      TextCellValue('Google_Maps_URL'),
       TextCellValue('Address_Type'),
       TextCellValue('Address_EN'),
       TextCellValue('Address_AR'),
@@ -1471,15 +1679,27 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('Tax_Card_URL'),
     ]);
 
+    final Map<String, String> idToName = {};
+    for (var c in widget.companies) {
+      idToName[c['id'].toString()] = (c['name_en'] ?? c['name_ar'] ?? '').toString();
+    }
+
     for (var c in widget.companies) {
       final addrs = (c['company_addresses'] as List? ?? []);
       final contacts = (c['company_contacts'] as List? ?? []);
       final maxRows = max(addrs.length, contacts.length);
 
+      final isGroupStr = (c['is_group'] == true) ? 'TRUE' : 'FALSE';
+      final parentName = c['parent_company_id'] != null ? (idToName[c['parent_company_id'].toString()] ?? '') : '';
+      final mapsUrl = c['google_maps_url'] ?? '';
+
       if (maxRows == 0) {
         sheet.appendRow([
           TextCellValue(c['name_en'] ?? ''),
           TextCellValue(c['name_ar'] ?? ''),
+          TextCellValue(isGroupStr),
+          TextCellValue(parentName),
+          TextCellValue(mapsUrl),
           TextCellValue(''),
           TextCellValue(''),
           TextCellValue(''),
@@ -1497,6 +1717,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           sheet.appendRow([
             TextCellValue(c['name_en'] ?? ''),
             TextCellValue(c['name_ar'] ?? ''),
+            TextCellValue(isGroupStr),
+            TextCellValue(parentName),
+            TextCellValue(mapsUrl),
             TextCellValue(addr?['type'] ?? ''),
             TextCellValue(addr?['address_en'] ?? ''),
             TextCellValue(addr?['address_ar'] ?? ''),
@@ -1522,6 +1745,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     launchUrl(Uri.parse(anchor), mode: LaunchMode.externalApplication);
   }
 
+  // 3. رفع الإكسيل مع نظام Two-Pass Import
   Future<void> _handleExcelUpload({required String mode}) async {
     final s = AppState.instance;
     final result = await FilePicker.platform.pickFiles(
@@ -1544,24 +1768,31 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         await Supabase.instance.client.from('companies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       }
 
+      final Map<String, String> companyNameToId = {};
+      final List<Map<String, String>> pendingParentLinks = [];
+
       for (var table in excel.tables.keys) {
         final rows = excel.tables[table]!.rows;
         if (rows.length <= 1) continue;
 
+        // Pass 1: إنشاء وتحديث الشركات والمقرات
         for (int i = 1; i < rows.length; i++) {
           final row = rows[i];
           if (row.isEmpty) continue;
 
           final nameEn = row.length > 0 ? row[0]?.value?.toString().trim() ?? '' : '';
           final nameAr = row.length > 1 ? row[1]?.value?.toString().trim() ?? '' : '';
-          final addrType = row.length > 2 ? row[2]?.value?.toString().trim() ?? 'mailing' : 'mailing';
-          final addrEn = row.length > 3 ? row[3]?.value?.toString().trim() : null;
-          final addrAr = row.length > 4 ? row[4]?.value?.toString().trim() : null;
-          final contNameEn = row.length > 5 ? row[5]?.value?.toString().trim() : null;
-          final contNameAr = row.length > 6 ? row[6]?.value?.toString().trim() : null;
-          final contRole = row.length > 7 ? row[7]?.value?.toString().trim() : null;
-          final contPhone = row.length > 8 ? row[8]?.value?.toString().trim() : null;
-          final taxCardUrl = row.length > 9 ? row[9]?.value?.toString().trim() : null;
+          final isGroupVal = row.length > 2 ? row[2]?.value?.toString().trim().toUpperCase() == 'TRUE' : false;
+          final parentName = row.length > 3 ? row[3]?.value?.toString().trim() ?? '' : '';
+          final mapsUrl = row.length > 4 ? row[4]?.value?.toString().trim() : null;
+          final addrType = row.length > 5 ? row[5]?.value?.toString().trim() ?? 'mailing' : 'mailing';
+          final addrEn = row.length > 6 ? row[6]?.value?.toString().trim() : null;
+          final addrAr = row.length > 7 ? row[7]?.value?.toString().trim() : null;
+          final contNameEn = row.length > 8 ? row[8]?.value?.toString().trim() : null;
+          final contNameAr = row.length > 9 ? row[9]?.value?.toString().trim() : null;
+          final contRole = row.length > 10 ? row[10]?.value?.toString().trim() : null;
+          final contPhone = row.length > 11 ? row[11]?.value?.toString().trim() : null;
+          final taxCardUrl = row.length > 12 ? row[12]?.value?.toString().trim() : null;
 
           if (nameEn.isEmpty && nameAr.isEmpty) continue;
 
@@ -1576,14 +1807,24 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             final ins = await Supabase.instance.client.from('companies').insert({
               'name_en': nameEn.isEmpty ? null : nameEn,
               'name_ar': nameAr.isEmpty ? null : nameAr,
+              'is_group': isGroupVal,
+              'google_maps_url': mapsUrl,
               'tax_card_url': taxCardUrl,
             }).select().single();
             compId = ins['id'];
           } else {
             compId = comp['id'];
-            if (taxCardUrl != null && taxCardUrl.isNotEmpty) {
-              await Supabase.instance.client.from('companies').update({'tax_card_url': taxCardUrl}).eq('id', compId);
-            }
+            final Map<String, dynamic> updateData = {'is_group': isGroupVal};
+            if (mapsUrl != null && mapsUrl.isNotEmpty) updateData['google_maps_url'] = mapsUrl;
+            if (taxCardUrl != null && taxCardUrl.isNotEmpty) updateData['tax_card_url'] = taxCardUrl;
+            await Supabase.instance.client.from('companies').update(updateData).eq('id', compId);
+          }
+
+          if (nameEn.isNotEmpty) companyNameToId[nameEn.toLowerCase()] = compId;
+          if (nameAr.isNotEmpty) companyNameToId[nameAr.toLowerCase()] = compId;
+
+          if (parentName.isNotEmpty) {
+            pendingParentLinks.add({'child_id': compId, 'parent_name': parentName.toLowerCase()});
           }
 
           if ((addrEn != null && addrEn.isNotEmpty) || (addrAr != null && addrAr.isNotEmpty)) {
@@ -1606,14 +1847,31 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             });
           }
         }
+
+        // Pass 2: ربط الفروع بالأصول
+        for (var link in pendingParentLinks) {
+          final parentId = companyNameToId[link['parent_name']];
+          if (parentId != null) {
+            await Supabase.instance.client
+                .from('companies')
+                .update({'parent_company_id': parentId})
+                .eq('id', link['child_id']!);
+          }
+        }
       }
 
       widget.onUpdate();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Excel data processed successfully!', 'تمت معالجة ملف الإكسيل بنجاح!'))));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(s.t('Excel data processed with groups successfully!', 'تمت معالجة ملف الإكسيل وربط المجموعات بنجاح!'))),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
-      setState(() => _busy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -1642,11 +1900,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       await Supabase.instance.client.from('companies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       widget.onUpdate();
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('All company data has been wiped.', 'تم تفريغ كافة البيانات.'))));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('All company data has been wiped.', 'تم تفريغ كافة البيانات.'))));
+      }
     }
   }
 
-  // --- دوال إدارة المستخدمين ---
   void _openAddUserDialog() async {
     final s = AppState.instance;
     final userCtrl = TextEditingController();
@@ -1758,7 +2017,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       child: ListTile(
                         leading: const Icon(Icons.download, color: Colors.blueAccent),
                         title: Text(s.t('Download Excel Template (template.xlsx)', 'تحميل القالب الفارغ (template.xlsx)')),
-                        subtitle: Text(s.t('Download template with predefined columns', 'ملف فارغ جاهز بالأعمدة المطلوبة')),
+                        subtitle: Text(s.t('Download template with predefined columns', 'ملف فارغ جاهز بالأعمدة المطلوبة والمجموعات')),
                         trailing: ElevatedButton(onPressed: _downloadTemplate, child: Text(s.t('Download', 'تحميل'))),
                       ),
                     ),
@@ -1914,7 +2173,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
-                    Text(s.t('Pending Access Requests (${_requests.length})', 'طلبات الانضمام المعلقة (${_requests.length})'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(s.t('Pending Access Requests (${_requests.length})', 'طلبات الانضمام المعلقة (${_requests.length})'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                     const SizedBox(height: 12),
                     if (_requests.isEmpty)
                       Text(s.t('No pending requests found', 'لا توجد طلبات معلقة حالياً'))
