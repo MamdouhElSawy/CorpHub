@@ -1,0 +1,15 @@
+{
+  "name": "CorpHub Directory",
+  "short_name": "CorpHub",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B192C",
+  "theme_color": "#008DDA",
+  "icons": [
+    {
+      "src": "https://www.eglegypt.com/wp-content/uploads/2022/05/EGL-Logo-2022-1536x708.jpg.webp",
+      "sizes": "512x512",
+      "type": "image/webp"
+    }
+  ]
+}
