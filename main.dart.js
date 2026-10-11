@@ -56424,56 +56424,56 @@ r=s.a(J.W(n.a.c,"company_addresses"))
 for(q=J.ap(r==null?[]:r),p=n.f;q.u();)p.B(0,J.ba(J.W(q.gK(q),"id")))
 o=s.a(J.W(n.a.c,"company_contacts"))
 for(s=J.ap(o==null?[]:o),q=n.r;s.u();)q.B(0,J.ba(J.W(s.gK(s),"id")))},
-afq(){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b=this,a="name_ar",a0="name_en",a1='<div class="section"><div class="section-title">',a2="address_ar",a3="address_en",a4="tax_card_url",a5='          <div class="tax-card-page">\n            <div class="section-title">',a6=$.d4(),a7=b.a.c,a8=J.a1(a7)
-if(a6.a){s=a8.h(a7,a)
+afq(){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a=this,a0="name_ar",a1="name_en",a2='<div class="section"><div class="section-title">',a3="address_ar",a4="address_en",a5="tax_card_url",a6=$.d4(),a7=a.a.c,a8=J.a1(a7)
+if(a6.a){s=a8.h(a7,a0)
+if(s==null)s=a8.h(a7,a1)
+r=s==null?"":s}else{s=a8.h(a7,a1)
 if(s==null)s=a8.h(a7,a0)
-r=s==null?"":s}else{s=a8.h(a7,a0)
-if(s==null)s=a8.h(a7,a)
 r=s==null?"":s}s=t.kc
 q=s.a(a8.h(a7,"company_addresses"))
 if(q==null)q=[]
-q=J.v9(q,new A.aD3(b))
+q=J.v9(q,new A.aD3(a))
 p=A.a6(q,!0,q.$ti.i("n.E"))
 s=s.a(a8.h(a7,"company_contacts"))
 if(s==null)s=[]
-s=J.v9(s,new A.aD4(b))
+s=J.v9(s,new A.aD4(a))
 o=A.a6(s,!0,s.$ti.i("n.E"))
-s=a6.a
-q=s?"rtl":"ltr"
-s=s?"\u0637\u0628\u0627\u0639\u0629 \u062a\u0642\u0631\u064a\u0631":"Print Record"
-n=b.d?"<h1>"+A.f(r)+"</h1>":""
-m='      <!DOCTYPE html>\n      <html dir="'+q+'">\n      <head>\n        <meta charset="utf-8">\n        <title>CorpHub - '+s+"</title>\n        <style>\n          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #111; }\n          .header { text-align: center; border-bottom: 2px solid #008DDA; padding-bottom: 12px; margin-bottom: 20px; }\n          .header h1 { margin: 0; font-size: 24px; color: #0B192C; }\n          .section { margin-bottom: 20px; }\n          .section-title { font-weight: bold; font-size: 16px; color: #008DDA; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }\n          .item { font-size: 14px; margin-bottom: 6px; }\n          .tax-card-page { page-break-before: always; text-align: center; padding-top: 20px; }\n          .tax-card-container {\n            width: 100%;\n            max-height: 500px;\n            display: flex;\n            justify-content: center;\n            align-items: center;\n            margin-top: 15px;\n            border: 1px dashed #008DDA;\n            padding: 10px;\n            border-radius: 8px;\n          }\n          .tax-card-img {\n            max-width: 100%;\n            max-height: 480px;\n            object-fit: contain;\n            border-radius: 6px;\n          }\n          .pdf-frame {\n            width: 100%;\n            height: 75vh;\n            border: 1px solid #ccc;\n            border-radius: 8px;\n            margin-top: 15px;\n          }\n          @media print {\n            body { padding: 0; }\n            .tax-card-page { page-break-before: always; }\n          }\n        </style>\n      </head>\n      <body>\n        <div class=\"header\">\n          "+n+'\n          <p style="font-size: 12px; color: #666;">CorpHub Corporate Directory</p>\n        </div>\n    '
+s=a6.a?"rtl":"ltr"
+q=A.f(r)
+n=a.d?"<h1>"+A.f(r)+"</h1>":""
+m='      <!DOCTYPE html>\n      <html dir="'+s+'">\n      <head>\n        <meta charset="utf-8">\n        <title>CorpHub - '+q+"</title>\n        <style>\n          @page {\n            size: A4;\n            margin: 15mm;\n          }\n          body { \n            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; \n            color: #111; \n            margin: 0;\n            padding: 10px;\n            background: #fff;\n          }\n          .header { \n            text-align: center; \n            border-bottom: 2px solid #008DDA; \n            padding-bottom: 12px; \n            margin-bottom: 20px; \n          }\n          .header h1 { margin: 0; font-size: 22px; color: #0B192C; }\n          .sub-title { font-size: 11px; color: #666; margin-top: 4px; }\n          \n          .section { margin-bottom: 18px; }\n          .section-title { \n            font-weight: bold; \n            font-size: 15px; \n            color: #008DDA; \n            border-bottom: 1px solid #ddd; \n            padding-bottom: 4px; \n            margin-bottom: 8px; \n          }\n          .item { font-size: 13px; margin-bottom: 6px; line-height: 1.5; }\n\n          .page-break { page-break-before: always; break-before: page; }\n          \n          .tax-card-wrapper {\n            display: flex;\n            flex-direction: column;\n            align-items: center;\n            justify-content: flex-start;\n            width: 100%;\n            margin-top: 20px;\n          }\n\n          /* \u062a\u062d\u062f\u064a\u062f \u0645\u0642\u0627\u0633 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 \u0627\u0644\u0639\u0645\u0644\u064a 9\u0633\u0645 \xd7 5\u0633\u0645 \u0648\u0645\u062d\u0627\u0630\u0627\u0629 \u0623\u0646\u064a\u0642\u0629 */\n          .printable-card {\n            width: 9cm;\n            height: 5cm;\n            object-fit: contain;\n            border: 1px solid #999;\n            border-radius: 6px;\n            padding: 4px;\n            background: #fff;\n            box-shadow: 0 1px 3px rgba(0,0,0,0.1);\n          }\n\n          /* \u0645\u0642\u0627\u0633 \u062e\u0627\u0635 \u0644\u0644\u0640 PDF */\n          .printable-pdf {\n            width: 100%;\n            max-width: 18cm;\n            height: 22cm;\n            border: 1px solid #ccc;\n            border-radius: 4px;\n          }\n\n          @media print {\n            body { padding: 0; background: none; }\n            .printable-card {\n              border: 1px solid #333 !important;\n            }\n          }\n        </style>\n      </head>\n      <body>\n        <div class=\"header\">\n          "+n+'\n          <div class="sub-title">CorpHub Corporate Directory Report</div>\n        </div>\n    '
 s=p.length
-if(s!==0){m+=a1+(a6.a?"\u0627\u0644\u0639\u0646\u0627\u0648\u064a\u0646:":"Addresses:")+"</div>"
+if(s!==0){m+=a2+(a6.a?"\u0627\u0644\u0639\u0646\u0627\u0648\u064a\u0646:":"Addresses:")+"</div>"
 for(l=0;l<s;++l){k=p[l]
 q=J.a1(k)
-if(a6.a){n=q.h(k,a2)
+if(a6.a){n=q.h(k,a3)
+if(n==null)n=q.h(k,a4)
+j=n==null?"":n}else{n=q.h(k,a4)
 if(n==null)n=q.h(k,a3)
-j=n==null?"":n}else{n=q.h(k,a3)
-if(n==null)n=q.h(k,a2)
 j=n==null?"":n}if(J.d(q.h(k,"type"),"mailing"))i=a6.a?"\u0645\u0631\u0627\u0633\u0644\u0629":"Mailing"
 else i=a6.a?"\u062a\u0634\u063a\u064a\u0644":"Operation"
 m+='<div class="item">\u2022 <b>['+i+"]:</b> "+A.f(j)+"</div>"}m+="</div>"}s=o.length
-if(s!==0){m+=a1+(a6.a?"\u062c\u0647\u0627\u062a \u0627\u0644\u0627\u062a\u0635\u0627\u0644:":"Contacts:")+"</div>"
+if(s!==0){m+=a2+(a6.a?"\u062c\u0647\u0627\u062a \u0627\u0644\u0627\u062a\u0635\u0627\u0644:":"Contacts:")+"</div>"
 for(l=0;l<s;++l){h=o[l]
 q=J.a1(h)
-if(a6.a){n=q.h(h,a)
+if(a6.a){n=q.h(h,a0)
+if(n==null)n=q.h(h,a1)
+g=n==null?"":n}else{n=q.h(h,a1)
 if(n==null)n=q.h(h,a0)
-g=n==null?"":n}else{n=q.h(h,a0)
-if(n==null)n=q.h(h,a)
 g=n==null?"":n}if(a6.a){n=q.h(h,"role_ar")
 if(n==null)n=q.h(h,"role_en")
 f=n==null?"":n}else{n=q.h(h,"role_en")
 if(n==null)n=q.h(h,"role_ar")
 f=n==null?"":n}e=q.h(h,"phone")
 if(e==null)e=""
-m+='<div class="item">\u2022 <b>'+A.f(g)+"</b> ("+A.f(f)+") - "+A.f(e)+"</div>"}m+="</div>"}if(b.e&&a8.h(a7,a4)!=null){d=J.ba(a8.h(a7,a4))
-if(!B.c.p(d.toLowerCase(),".pdf"))m+=a5+(a6.a?"\u0645\u0633\u062a\u0646\u062f \u0627\u0644\u0628\u0637\u0627\u0642\u0629 \u0627\u0644\u0636\u0631\u064a\u0628\u064a\u0629:":"Tax Card Document:")+'</div>\n            <div class="tax-card-container">\n              <img class="tax-card-img" src="'+d+'" />\n            </div>\n          </div>\n        '
-else m+=a5+(a6.a?"\u0645\u0633\u062a\u0646\u062f \u0627\u0644\u0628\u0637\u0627\u0642\u0629 \u0627\u0644\u0636\u0631\u064a\u0628\u064a\u0629 (PDF):":"Tax Card (PDF Document):")+'</div>\n            <iframe class="pdf-frame" src="'+d+'"></iframe>\n          </div>\n        '}a8=(self.URL||self.webkitURL).createObjectURL(A.aZ6([m+"        <script>\n          window.onload = function() {\n            window.print();\n          };\n        </script>\n      </body>\n      </html>\n    "],"text/html"))
+m+='<div class="item">\u2022 <b>'+A.f(g)+"</b> ("+A.f(f)+") - "+A.f(e)+"</div>"}m+="</div>"}if(a.e&&a8.h(a7,a5)!=null){d=J.ba(a8.h(a7,a5))
+c=B.c.p(d.toLowerCase(),".pdf")
+m+='        <div class="page-break"></div>\n        <div class="tax-card-wrapper">\n          <div class="section-title" style="width: 100%; text-align: center; margin-bottom: 15px;">\n            '+(a6.a?"\u0645\u0633\u062a\u0646\u062f \u0627\u0644\u0628\u0637\u0627\u0642\u0629 \u0627\u0644\u0636\u0631\u064a\u0628\u064a\u0629:":"Tax Card Document:")+"\n          </div>\n      "
+m=(!c?m+('<img class="printable-card" src="'+d+'" />'):m+('          <object class="printable-pdf" data="'+d+'#toolbar=0&navpanes=0&scrollbar=0" type="application/pdf">\n            <embed src="'+d+'#toolbar=0&navpanes=0&scrollbar=0" type="application/pdf" />\n          </object>\n        '))+"</div>"}a8=(self.URL||self.webkitURL).createObjectURL(A.aZ6([m+"        <script>\n          window.onload = function() {\n            setTimeout(function() {\n              window.print();\n            }, 500);\n          };\n        </script>\n      </body>\n      </html>\n    "],"text/html"))
 a8.toString
-c=window.open(a8,"_blank")
-A.b4W(c)
-a8=b.c
+b=window.open(a8,"_blank")
+A.b4W(b)
+a8=a.c
 a8.toString
 A.ck(a8,!1).cL(null)},
 M(a){var s,r,q,p,o,n=this,m=null,l=$.d4(),k=t.kc,j=k.a(J.W(n.a.c,"company_addresses"))
