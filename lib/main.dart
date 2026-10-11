@@ -2164,49 +2164,83 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
       <html dir="${s.isArabic ? 'rtl' : 'ltr'}">
       <head>
         <meta charset="utf-8">
-        <title>CorpHub - ${s.t('Print Record', 'طباعة تقرير')}</title>
+        <title>CorpHub - $compName</title>
         <style>
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #111; }
-          .header { text-align: center; border-bottom: 2px solid #008DDA; padding-bottom: 12px; margin-bottom: 20px; }
-          .header h1 { margin: 0; font-size: 24px; color: #0B192C; }
-          .section { margin-bottom: 20px; }
-          .section-title { font-weight: bold; font-size: 16px; color: #008DDA; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }
-          .item { font-size: 14px; margin-bottom: 6px; }
-          .tax-card-page { page-break-before: always; text-align: center; padding-top: 20px; }
-          .tax-card-container {
-            width: 100%;
-            max-height: 500px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-top: 15px;
-            border: 1px dashed #008DDA;
+          @page {
+            size: A4;
+            margin: 15mm;
+          }
+          body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            color: #111; 
+            margin: 0;
             padding: 10px;
-            border-radius: 8px;
+            background: #fff;
           }
-          .tax-card-img {
-            max-width: 100%;
-            max-height: 480px;
-            object-fit: contain;
-            border-radius: 6px;
+          .header { 
+            text-align: center; 
+            border-bottom: 2px solid #008DDA; 
+            padding-bottom: 12px; 
+            margin-bottom: 20px; 
           }
-          .pdf-frame {
+          .header h1 { margin: 0; font-size: 22px; color: #0B192C; }
+          .sub-title { font-size: 11px; color: #666; margin-top: 4px; }
+          
+          .section { margin-bottom: 18px; }
+          .section-title { 
+            font-weight: bold; 
+            font-size: 15px; 
+            color: #008DDA; 
+            border-bottom: 1px solid #ddd; 
+            padding-bottom: 4px; 
+            margin-bottom: 8px; 
+          }
+          .item { font-size: 13px; margin-bottom: 6px; line-height: 1.5; }
+
+          .page-break { page-break-before: always; break-before: page; }
+          
+          .tax-card-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
             width: 100%;
-            height: 75vh;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            margin-top: 15px;
+            margin-top: 20px;
           }
+
+          /* تحديد مقاس البطاقة العملي 9سم × 5سم ومحاذاة أنيقة */
+          .printable-card {
+            width: 9cm;
+            height: 5cm;
+            object-fit: contain;
+            border: 1px solid #999;
+            border-radius: 6px;
+            padding: 4px;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+
+          /* مقاس خاص للـ PDF */
+          .printable-pdf {
+            width: 100%;
+            max-width: 18cm;
+            height: 22cm;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+          }
+
           @media print {
-            body { padding: 0; }
-            .tax-card-page { page-break-before: always; }
+            body { padding: 0; background: none; }
+            .printable-card {
+              border: 1px solid #333 !important;
+            }
           }
         </style>
       </head>
       <body>
         <div class="header">
           ${_incName ? "<h1>$compName</h1>" : ""}
-          <p style="font-size: 12px; color: #666;">CorpHub Corporate Directory</p>
+          <div class="sub-title">CorpHub Corporate Directory Report</div>
         </div>
     ''';
 
@@ -2233,29 +2267,35 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
 
     if (_incTaxCard && comp['tax_card_url'] != null) {
       final url = comp['tax_card_url'].toString();
-      if (!url.toLowerCase().contains('.pdf')) {
-        contentHtml += '''
-          <div class="tax-card-page">
-            <div class="section-title">${s.t("Tax Card Document:", "مستند البطاقة الضريبية:")}</div>
-            <div class="tax-card-container">
-              <img class="tax-card-img" src="$url" />
-            </div>
+      final isPdf = url.toLowerCase().contains('.pdf');
+
+      contentHtml += '''
+        <div class="page-break"></div>
+        <div class="tax-card-wrapper">
+          <div class="section-title" style="width: 100%; text-align: center; margin-bottom: 15px;">
+            ${s.t("Tax Card Document:", "مستند البطاقة الضريبية:")}
           </div>
-        ''';
+      ''';
+
+      if (!isPdf) {
+        contentHtml += '<img class="printable-card" src="$url" />';
       } else {
         contentHtml += '''
-          <div class="tax-card-page">
-            <div class="section-title">${s.t("Tax Card (PDF Document):", "مستند البطاقة الضريبية (PDF):")}</div>
-            <iframe class="pdf-frame" src="$url"></iframe>
-          </div>
+          <object class="printable-pdf" data="$url#toolbar=0&navpanes=0&scrollbar=0" type="application/pdf">
+            <embed src="$url#toolbar=0&navpanes=0&scrollbar=0" type="application/pdf" />
+          </object>
         ''';
       }
+
+      contentHtml += '</div>';
     }
 
     contentHtml += '''
         <script>
           window.onload = function() {
-            window.print();
+            setTimeout(function() {
+              window.print();
+            }, 500);
           };
         </script>
       </body>
@@ -2263,8 +2303,8 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
     ''';
 
     final blob = html.Blob([contentHtml], 'text/html');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    html.window.open(url, '_blank');
+    final blobUrl = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(blobUrl, '_blank');
     Navigator.pop(context);
   }
 
