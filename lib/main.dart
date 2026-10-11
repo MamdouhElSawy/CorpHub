@@ -491,13 +491,24 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 const Divider(),
                 Expanded(
                   child: InteractiveViewer(
-                    child: Image.network(
-                      url,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Center(
-                        child: Text(s.t('Failed to load image. Click below to open in browser.', 'تعذر عرض الصورة، اضغط الزر بالأسفل لفتحها مباشرة.')),
-                      ),
-                    ),
+                    child: url.toLowerCase().contains('.pdf')
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.picture_as_pdf, size: 64, color: Colors.redAccent),
+                                const SizedBox(height: 12),
+                                Text(s.t('PDF Document format', 'مستند PDF غير قابل للعرض المباشر هنا')),
+                              ],
+                            ),
+                          )
+                        : Image.network(
+                            url,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Text(s.t('Failed to load image. Click below to open in browser.', 'تعذر عرض الصورة، اضغط الزر بالأسفل لفتحها مباشرة.')),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -507,7 +518,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
                       icon: const Icon(Icons.open_in_new, size: 16),
-                      label: Text(s.t('Open Original', 'فتح الرابط الأصلي / تحميل')),
+                      label: Text(s.t('Open Original / Download', 'فتح الرابط الأصلي / تحميل')),
                       onPressed: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
                     ),
                   ],
@@ -522,10 +533,21 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
   void _shareTaxCardAsImage(String? url, String companyName) async {
     final s = AppState.instance;
-    if (url == null || url.isEmpty) {
+    if (url == null || url.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.t('No tax card uploaded', 'لا توجد صورة مسجلة'))),
+        SnackBar(content: Text(s.t('No tax card uploaded', 'لا توجد صورة أو ملف مسجل'))),
       );
+      return;
+    }
+
+    final isPdf = url.toLowerCase().contains('.pdf');
+
+    if (isPdf) {
+      final msg = '${s.t("Tax Card Document (PDF) for:", "مستند البطاقة الضريبية (PDF) لشركة:")} $companyName\n\n📄 $url';
+      final waUri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
+      if (await canLaunchUrl(waUri)) {
+        await launchUrl(waUri, mode: LaunchMode.externalApplication);
+      }
       return;
     }
 
@@ -623,7 +645,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   onSelected: (val) async {
                     if (val == 'lang') {
                       s.toggleLanguage();
-                      setState(() {}); // تحديث فوري بدون ريفريش يدوي
+                      setState(() {});
                     } else if (val == 'theme') {
                       s.toggleTheme();
                     } else if (val == 'login') {
@@ -740,7 +762,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   ),
                   onPressed: () {
                     s.toggleLanguage();
-                    setState(() {}); // تحديث فوري للشاشة باللغة الجديدة
+                    setState(() {});
                   },
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1286,7 +1308,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.t('Tax card uploaded successfully!', 'تم رفع صورة البطاقة الضريبية بنجاح!'))),
+          SnackBar(content: Text(s.t('Tax card uploaded successfully!', 'تم رفع مستند البطاقة الضريبية بنجاح!'))),
         );
       }
     } catch (e) {
@@ -1448,7 +1470,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                         child: TextField(
                           controller: _taxCardUrl,
                           decoration: InputDecoration(
-                            labelText: s.t('Tax Card Image URL', 'رابط صورة البطاقة الضريبية'),
+                            labelText: s.t('Tax Card / PDF URL', 'رابط البطاقة أو مستند الـ PDF'),
                             prefixIcon: const Icon(Icons.image),
                           ),
                         ),
@@ -1457,14 +1479,13 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
                         icon: _uploadingTaxCard ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.upload_file),
-                        label: Text(s.t('Upload', 'رفع صورة')),
+                        label: Text(s.t('Upload', 'رفع ملف')),
                         onPressed: _uploadingTaxCard ? null : _pickAndUploadTaxCard,
                       ),
                     ],
                   ),
                   const SizedBox(height: 14),
 
-                  // نظام التبعية والمجموعات
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -2058,7 +2079,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   }
 }
 
-// ----------------- الطباعة الانتقائية مع تفعيل الطباعة الحقيقية للمتصفح -----------------
+// ----------------- الطباعة الانتقائية بنظام صفحات A4 متناسقة -----------------
 class SelectivePrintDialog extends StatefulWidget {
   final Map<String, dynamic> company;
   const SelectivePrintDialog({super.key, required this.company});
@@ -2080,12 +2101,99 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
     for (var a in addrs) {
       _selectedAddresses.add(a['id'].toString());
     }
+    final contacts = widget.company['company_contacts'] as List? ?? [];
+    for (var c in contacts) {
+      _selectedContacts.add(c['id'].toString());
+    }
   }
 
   void _executePrint() {
+    final s = AppState.instance;
+    final comp = widget.company;
+    final compName = s.isArabic
+        ? (comp['name_ar'] ?? comp['name_en'] ?? '')
+        : (comp['name_en'] ?? comp['name_ar'] ?? '');
+
+    final addrs = (comp['company_addresses'] as List? ?? [])
+        .where((a) => _selectedAddresses.contains(a['id'].toString()))
+        .toList();
+
+    final contacts = (comp['company_contacts'] as List? ?? [])
+        .where((c) => _selectedContacts.contains(c['id'].toString()))
+        .toList();
+
+    final printWindow = html.window.open('', '_blank');
+    if (printWindow == null) return;
+
+    String contentHtml = '''
+      <!DOCTYPE html>
+      <html dir="${s.isArabic ? 'rtl' : 'ltr'}">
+      <head>
+        <title>CorpHub - ${s.t('Print Record', 'طباعة تقرير')}</title>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #111; }
+          .header { text-align: center; border-bottom: 2px solid #008DDA; padding-bottom: 12px; margin-bottom: 20px; }
+          .header h1 { margin: 0; font-size: 24px; color: #0B192C; }
+          .section { margin-bottom: 20px; }
+          .section-title { font-weight: bold; font-size: 16px; color: #008DDA; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }
+          .item { font-size: 14px; margin-bottom: 6px; }
+          .tax-card-img { max-width: 100%; height: auto; max-height: 400px; border: 1px solid #ccc; margin-top: 10px; border-radius: 8px; }
+          @media print {
+            body { padding: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          ${_incName ? "<h1>$compName</h1>" : ""}
+          <p style="font-size: 12px; color: #666;">CorpHub Corporate Directory</p>
+        </div>
+    ''';
+
+    if (addrs.isNotEmpty) {
+      contentHtml += '<div class="section"><div class="section-title">${s.t("Addresses:", "العناوين:")}</div>';
+      for (var a in addrs) {
+        final text = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
+        final type = a['type'] == 'mailing' ? s.t('Mailing', 'مراسلة') : s.t('Operation', 'تشغيل');
+        contentHtml += '<div class="item">• <b>[$type]:</b> $text</div>';
+      }
+      contentHtml += '</div>';
+    }
+
+    if (contacts.isNotEmpty) {
+      contentHtml += '<div class="section"><div class="section-title">${s.t("Contacts:", "جهات الاتصال:")}</div>';
+      for (var c in contacts) {
+        final cName = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
+        final cRole = s.isArabic ? (c['role_ar'] ?? c['role_en'] ?? '') : (c['role_en'] ?? c['role_ar'] ?? '');
+        final phone = c['phone'] ?? '';
+        contentHtml += '<div class="item">• <b>$cName</b> ($cRole) - $phone</div>';
+      }
+      contentHtml += '</div>';
+    }
+
+    if (_incTaxCard && comp['tax_card_url'] != null) {
+      final url = comp['tax_card_url'].toString();
+      if (!url.toLowerCase().contains('.pdf')) {
+        contentHtml += '<div class="section"><div class="section-title">${s.t("Tax Card:", "البطاقة الضريبية:")}</div><img class="tax-card-img" src="$url" /></div>';
+      } else {
+        contentHtml += '<div class="section"><div class="section-title">${s.t("Tax Card (PDF):", "البطاقة الضريبية (PDF):")}</div><p style="font-size:12px;">$url</p></div>';
+      }
+    }
+
+    contentHtml += '''
+        <script>
+          window.onload = function() {
+            window.print();
+            setTimeout(function() { window.close(); }, 500);
+          };
+        </script>
+      </body>
+      </html>
+    ''';
+
+    printWindow.document.write(contentHtml);
+    printWindow.document.close();
     Navigator.pop(context);
-    // تفعيل نافذة الطباعة الفعلية للمتصفح مباشرة
-    html.window.print();
   }
 
   @override
@@ -2108,7 +2216,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
                 onChanged: (v) => setState(() => _incName = v ?? true),
               ),
               CheckboxListTile(
-                title: Text(s.t('Tax Card Image', 'صورة البطاقة الضريبية')),
+                title: Text(s.t('Tax Card / PDF', 'البطاقة الضريبية / المستند')),
                 value: _incTaxCard,
                 onChanged: (v) => setState(() => _incTaxCard = v ?? false),
               ),
@@ -2958,7 +3066,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           : TabBarView(
               controller: _tabController,
               children: [
-                // 1. الإكسيل
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
@@ -3044,8 +3151,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                   ],
                 ),
-
-                // 2. إدارة المستخدمين
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
@@ -3100,8 +3205,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     }),
                   ],
                 ),
-
-                // 3. طلبات استعادة وتعيين الباسورد
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
@@ -3162,8 +3265,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       }),
                   ],
                 ),
-
-                // 4. طلبات الانضمام
                 ListView(
                   padding: EdgeInsets.all(isMobile ? 12 : 20),
                   children: [
