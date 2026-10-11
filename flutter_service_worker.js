@@ -4,12 +4,11 @@ const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
 const RESOURCES = {"manifest.json": "27550c93d74b33f9cfc53f52d3b41bae",
-"flutter_bootstrap.js": "5e820417fc9f6a4fb2a5e0ecbe44a834",
-"assets/AssetManifest.bin.json": "5fdb37d499c8722366196cb8ff51bd16",
-"assets/AssetManifest.json": "3c02c7ec11fd065928c4dfb37ce3d439",
-"assets/assets/images/egl_logo.png": "9fcbbaef0269d424377094c3f0a291bc",
+"flutter_bootstrap.js": "90c3629bd3144e8942db4b0c2cddc095",
+"assets/AssetManifest.bin.json": "a1fee2517bf598633e2f67fcf3e26c94",
+"assets/AssetManifest.json": "99914b932bd37a50b983c5e7c90ae93b",
 "assets/NOTICES": "cb2de222fb1f9e1f3f6b353a82a4bd4a",
-"assets/AssetManifest.bin": "405d501a015681d9c0876655177fbe3b",
+"assets/AssetManifest.bin": "0b0a3415aad49b6e9bf965ff578614f9",
 "assets/FontManifest.json": "7b2a36307916a9721811788013e65289",
 "assets/shaders/ink_sparkle.frag": "ecc85a2e95f5e9f53123dcaf8cb9b6ce",
 "assets/fonts/MaterialIcons-Regular.otf": "8feae573bcc49e986c2827e6a7f9e9ac",
