@@ -2122,14 +2122,11 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
         .where((c) => _selectedContacts.contains(c['id'].toString()))
         .toList();
 
-    // تحديد نوع نافذة الطباعة بصراحة كـ html.Window لحل خطأ الـ Build
-    final html.Window? printWindow = html.window.open('', '_blank');
-    if (printWindow == null) return;
-
     String contentHtml = '''
       <!DOCTYPE html>
       <html dir="${s.isArabic ? 'rtl' : 'ltr'}">
       <head>
+        <meta charset="utf-8">
         <title>CorpHub - ${s.t('Print Record', 'طباعة تقرير')}</title>
         <style>
           body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #111; }
@@ -2192,8 +2189,9 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
       </html>
     ''';
 
-    printWindow.document.write(contentHtml);
-    printWindow.document.close();
+    final blob = html.Blob([contentHtml], 'text/html');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(url, '_blank');
     Navigator.pop(context);
   }
 
