@@ -609,27 +609,9 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 1,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.network(
-                'https://www.eglegypt.com/wp-content/uploads/2022/05/EGL-Logo-2022-1536x708.jpg.webp',
-                height: isMobile ? 26 : 38,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: const Color(0xFF008DDA), borderRadius: BorderRadius.circular(4)),
-                  child: const Text('EGL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              isMobile ? 'CorpHub' : s.t('CorpHub Directory', 'دليل الشركات'),
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 15 : 18),
-            ),
-          ],
+        title: Text(
+          isMobile ? 'CorpHub' : s.t('CorpHub Directory', 'دليل الشركات'),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 18 : 22),
         ),
         actions: isMobile
             ? [
@@ -2208,6 +2190,13 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
             object-fit: contain;
             border-radius: 6px;
           }
+          .pdf-frame {
+            width: 100%;
+            height: 75vh;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            margin-top: 15px;
+          }
           @media print {
             body { padding: 0; }
             .tax-card-page { page-break-before: always; }
@@ -2257,13 +2246,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
         contentHtml += '''
           <div class="tax-card-page">
             <div class="section-title">${s.t("Tax Card (PDF Document):", "مستند البطاقة الضريبية (PDF):")}</div>
-            <br>
-            <p style="font-size: 16px;"><b>${s.t("Attached PDF Document File", "ملف PDF المرفق للشركة")}</b></p>
-            <p style="font-size: 12px; color: #555; word-break: break-all;">$url</p>
-            <br>
-            <a href="$url" target="_blank" style="padding: 10px 20px; background-color: #008DDA; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
-              ${s.t("Open & Print PDF File Separately", "فتح وطباعة ملف الـ PDF بشكل مستقل")}
-            </a>
+            <iframe class="pdf-frame" src="$url"></iframe>
           </div>
         ''';
       }
