@@ -542,23 +542,16 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
     final isPdf = url.toLowerCase().contains('.pdf');
 
-    if (isPdf) {
-      final msg = '${s.t("Tax Card Document (PDF) for:", "مستند البطاقة الضريبية (PDF) لشركة:")} $companyName\n\n📄 $url';
-      final waUri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
-      if (await canLaunchUrl(waUri)) {
-        await launchUrl(waUri, mode: LaunchMode.externalApplication);
-      }
-      return;
-    }
-
     try {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.t('Preparing image file...', 'جاري تحضير ملف الصورة...'))),
+        SnackBar(content: Text(s.t('Preparing file for sharing...', 'جاري تجهيز الملف للمشاركة...'))),
       );
 
       final res = await html.HttpRequest.request(url, responseType: 'blob');
       final blob = res.response as html.Blob;
-      final file = html.File([blob], 'tax_card_${companyName.replaceAll(' ', '_')}.png', {'type': 'image/png'});
+      final fileName = isPdf ? 'tax_card_${companyName.replaceAll(' ', '_')}.pdf' : 'tax_card_${companyName.replaceAll(' ', '_')}.png';
+      final mimeType = isPdf ? 'application/pdf' : 'image/png';
+      final file = html.File([blob], fileName, {'type': mimeType});
 
       if (html.window.navigator.share != null) {
         await html.window.navigator.share({
@@ -567,10 +560,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         });
       } else {
         final anchor = html.AnchorElement(href: html.Url.createObjectUrlFromBlob(blob))
-          ..setAttribute('download', 'tax_card_$companyName.png')
+          ..setAttribute('download', fileName)
           ..click();
         
-        final msg = '${s.t("Tax Card for:", "البطاقة الضريبية لشركة:")} $companyName';
+        final msg = '${s.t("Tax Card Document for:", "مستند البطاقة الضريبية لشركة:")} $companyName\n\n$url';
         final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
         if (await canLaunchUrl(wa)) {
           await launchUrl(wa, mode: LaunchMode.externalApplication);
@@ -986,6 +979,15 @@ class CompanyCard extends StatelessWidget {
     required this.onShare,
   });
 
+  void _shareMaps(String? url, String companyName) async {
+    if (url == null || url.trim().isEmpty) return;
+    final msg = '${AppProvider.t("Location for:", "موقع مقر شركة:")} $companyName\n📍 $url';
+    final waUri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
+    if (await canLaunchUrl(waUri)) {
+      await launchUrl(waUri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   void _openMaps(String? url) async {
     if (url == null || url.trim().isEmpty) return;
     final uri = Uri.parse(url.trim());
@@ -998,6 +1000,7 @@ class CompanyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = AppState.instance;
     final name = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
+    final isMobile = MediaQuery.of(context).size.width < 768;
 
     final showTax = isLoggedIn || (privacy['public_show_tax_card'] ?? false);
     final showPhones = isLoggedIn || (privacy['public_show_phones'] ?? false);
@@ -1045,10 +1048,9 @@ class CompanyCard extends StatelessWidget {
                       Flexible(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                       if (isGroup) ...[
                         const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: Colors.amber.shade800, borderRadius: BorderRadius.circular(4)),
-                          child: Text(s.t('Group / Holding', 'مجموعة قابضة'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        Tooltip(
+                          message: s.t('Group / Holding', 'مجموعة قابضة'),
+                          child: Icon(Icons.star, size: 16, color: Colors.amber.shade800),
                         ),
                       ],
                     ],
@@ -1061,7 +1063,7 @@ class CompanyCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (canEdit) ...[
+            if (canEdit && !isMobile) ...[
               IconButton(
                 icon: const Icon(Icons.edit, size: 20, color: Color(0xFF008DDA)),
                 tooltip: s.t('Edit Company', 'تعديل بيانات الشركة'),
@@ -1075,6 +1077,19 @@ class CompanyCard extends StatelessWidget {
             ],
           ],
         ),
+        trailing: isMobile && canEdit
+            ? PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (val) {
+                  if (val == 'edit') onEdit();
+                  if (val == 'delete') onDelete();
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'edit', child: Text(s.t('Edit', 'تعديل'))),
+                  PopupMenuItem(value: 'delete', child: Text(s.t('Delete', 'حذف'))),
+                ],
+              )
+            : null,
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
@@ -1095,7 +1110,7 @@ class CompanyCard extends StatelessWidget {
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
                         icon: const Icon(Icons.share, size: 16),
-                        label: Text(s.t('Share Image (واتساب)', 'إرسال صورة بالواتساب')),
+                        label: Text(s.t('Share File (واتساب)', 'إرسال الملف بالواتساب')),
                         onPressed: onShare,
                       ),
                     ],
@@ -1128,12 +1143,12 @@ class CompanyCard extends StatelessWidget {
                             child: Text('• [${isMail ? s.t("Mailing", "مراسلة") : s.t("Operation", "تشغيل")}]: $addrText'),
                           ),
                           if (mapUrl != null && mapUrl.trim().isNotEmpty) ...[
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             InkWell(
                               onTap: () => _openMaps(mapUrl),
                               borderRadius: BorderRadius.circular(4),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: Colors.redAccent.withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(6),
@@ -1144,7 +1159,28 @@ class CompanyCard extends StatelessWidget {
                                   children: [
                                     const Icon(Icons.location_on, size: 14, color: Colors.redAccent),
                                     const SizedBox(width: 4),
-                                    Text(s.t('Map', 'الخريطة'), style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                    Text(s.t('Map', 'الخريطة'), style: const TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: () => _shareMaps(mapUrl, name),
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF25D366).withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF25D366).withOpacity(0.5)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.share, size: 14, color: Color(0xFF25D366)),
+                                    const SizedBox(width: 4),
+                                    Text(s.t('Share', 'مشاركة'), style: const TextStyle(fontSize: 11, color: Color(0xFF25D366), fontWeight: FontWeight.bold)),
                                   ],
                                 ),
                               ),
@@ -1192,6 +1228,10 @@ class CompanyCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class AppProvider {
+  static String t(String en, String ar) => AppState.instance.isArabic ? ar : en;
 }
 
 // ----------------- استمارة إضافة وتعديل الشركة -----------------
@@ -2079,7 +2119,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   }
 }
 
-// ----------------- الطباعة الانتقائية بنظام صفحات A4 متناسقة -----------------
+// ----------------- الطباعة الانتقائية المطورة -----------------
 class SelectivePrintDialog extends StatefulWidget {
   final Map<String, dynamic> company;
   const SelectivePrintDialog({super.key, required this.company});
@@ -2135,7 +2175,8 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
           .section { margin-bottom: 20px; }
           .section-title { font-weight: bold; font-size: 16px; color: #008DDA; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }
           .item { font-size: 14px; margin-bottom: 6px; }
-          .tax-card-img { max-width: 100%; height: auto; max-height: 400px; border: 1px solid #ccc; margin-top: 10px; border-radius: 8px; }
+          .tax-card-page { page-break-before: always; text-align: center; padding-top: 20px; }
+          .tax-card-img { max-width: 100%; max-height: 85vh; height: auto; border: 1px solid #ccc; border-radius: 8px; }
           @media print {
             body { padding: 0; }
           }
@@ -2172,9 +2213,9 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
     if (_incTaxCard && comp['tax_card_url'] != null) {
       final url = comp['tax_card_url'].toString();
       if (!url.toLowerCase().contains('.pdf')) {
-        contentHtml += '<div class="section"><div class="section-title">${s.t("Tax Card:", "البطاقة الضريبية:")}</div><img class="tax-card-img" src="$url" /></div>';
+        contentHtml += '<div class="tax-card-page"><div class="section-title">${s.t("Tax Card Document:", "مستند البطاقة الضريبية:")}</div><br><img class="tax-card-img" src="$url" /></div>';
       } else {
-        contentHtml += '<div class="section"><div class="section-title">${s.t("Tax Card (PDF):", "البطاقة الضريبية (PDF):")}</div><p style="font-size:12px;">$url</p></div>';
+        contentHtml += '<div class="tax-card-page"><div class="section-title">${s.t("Tax Card (PDF Document):", "مستند البطاقة الضريبية (PDF):")}</div><br><p style="font-size:16px;"><b>${s.t("PDF Attached File:", "ملف PDF مرفق:")}</b> $url</p></div>';
       }
     }
 
@@ -2215,7 +2256,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
                 onChanged: (v) => setState(() => _incName = v ?? true),
               ),
               CheckboxListTile(
-                title: Text(s.t('Tax Card / PDF', 'البطاقة الضريبية / المستند')),
+                title: Text(s.t('Tax Card / PDF (Dedicated Page)', 'البطاقة الضريبية / مستند مستقل بالطباعة')),
                 value: _incTaxCard,
                 onChanged: (v) => setState(() => _incTaxCard = v ?? false),
               ),
@@ -2383,8 +2424,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 decoration: InputDecoration(labelText: s.t('Role / Permissions', 'الصلاحية والرتبة')),
                 items: [
                   DropdownMenuItem(value: 'viewer', child: Text(s.t('Viewer (Read Only)', 'مشاهد (تصفح فقط)'))),
-                  DropdownMenuItem(value: 'editor', child: Text(s.t('Editor (Can Add/Edit)', 'محرر (صلاحية إضافة وتعديل)'))),
-                  DropdownMenuItem(value: 'admin', child: Text(s.t('Admin (Full Control)', 'مدير نظام (تحكم كامل)'))),
+                  DropdownMenuItem(value: 'editor', child: Text('Editor (صلاحية إضافة وتعديل)'))),
+                  DropdownMenuItem(value: 'admin', child: Text('Admin (تحكم كامل)'))),
                 ],
                 onChanged: (val) => setDialogState(() => role = val!),
               ),
@@ -2772,22 +2813,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('Group CEO'),
       TextCellValue('+201200000000'),
       TextCellValue('https://...'),
-    ]);
-
-    sheet.appendRow([
-      TextCellValue('EGL Transport & Customs'),
-      TextCellValue('المصرية للنقل والتخليص الجمركي'),
-      TextCellValue('FALSE'),
-      TextCellValue('EGL Logistics Group'),
-      TextCellValue('operation'),
-      TextCellValue('Alexandria Port, Gate 27'),
-      TextCellValue('ميناء الإسكندرية، باب 27'),
-      TextCellValue('https://maps.app.goo.gl/...'),
-      TextCellValue('Mohamed Ali'),
-      TextCellValue('محمد علي'),
-      TextCellValue('Operations Manager'),
-      TextCellValue('+201211111111'),
-      TextCellValue(''),
     ]);
 
     final bytes = excel.encode();
