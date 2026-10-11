@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'dart:html' as html;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -1330,10 +1331,24 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       if (res == null || res.files.single.bytes == null) return;
 
       setState(() => _uploadingTaxCard = true);
-      final fileBytes = res.files.single.bytes!;
+      Uint8List fileBytes = res.files.single.bytes!;
       final ext = res.files.single.extension?.toLowerCase() ?? 'png';
+      final isPdf = ext == 'pdf';
+      
+      // ضغط الصور وتقليص أبعادها تلقائياً للحفاظ على الوضوح وتوفير المساحة
+      if (!isPdf) {
+        try {
+          final codec = await ui.instantiateImageCodec(fileBytes, targetWidth: 1200);
+          final frame = await codec.getNextFrame();
+          final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+          if (data != null) {
+            fileBytes = data.buffer.asUint8List();
+          }
+        } catch (_) {}
+      }
+
       final fileName = 'tax_card_${DateTime.now().millisecondsSinceEpoch}.$ext';
-      final contentType = ext == 'pdf' ? 'application/pdf' : 'image/$ext';
+      final contentType = isPdf ? 'application/pdf' : 'image/png';
 
       await Supabase.instance.client.storage.from('tax-cards').uploadBinary(
             fileName,
@@ -1348,7 +1363,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.t('Tax card uploaded successfully!', 'تم رفع مستند البطاقة الضريبية بنجاح!'))),
+          SnackBar(content: Text(s.t('Tax card compressed & uploaded successfully!', 'تم ضغط ورفع مستند البطاقة الضريبية بنجاح!'))),
         );
       }
     } catch (e) {
@@ -2176,9 +2191,26 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
           .section-title { font-weight: bold; font-size: 16px; color: #008DDA; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 8px; }
           .item { font-size: 14px; margin-bottom: 6px; }
           .tax-card-page { page-break-before: always; text-align: center; padding-top: 20px; }
-          .tax-card-img { max-width: 100%; max-height: 85vh; height: auto; border: 1px solid #ccc; border-radius: 8px; }
+          .tax-card-container {
+            width: 100%;
+            max-height: 500px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 15px;
+            border: 1px dashed #008DDA;
+            padding: 10px;
+            border-radius: 8px;
+          }
+          .tax-card-img {
+            max-width: 100%;
+            max-height: 480px;
+            object-fit: contain;
+            border-radius: 6px;
+          }
           @media print {
             body { padding: 0; }
+            .tax-card-page { page-break-before: always; }
           }
         </style>
       </head>
@@ -2213,9 +2245,27 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
     if (_incTaxCard && comp['tax_card_url'] != null) {
       final url = comp['tax_card_url'].toString();
       if (!url.toLowerCase().contains('.pdf')) {
-        contentHtml += '<div class="tax-card-page"><div class="section-title">${s.t("Tax Card Document:", "مستند البطاقة الضريبية:")}</div><br><img class="tax-card-img" src="$url" /></div>';
+        contentHtml += '''
+          <div class="tax-card-page">
+            <div class="section-title">${s.t("Tax Card Document:", "مستند البطاقة الضريبية:")}</div>
+            <div class="tax-card-container">
+              <img class="tax-card-img" src="$url" />
+            </div>
+          </div>
+        ''';
       } else {
-        contentHtml += '<div class="tax-card-page"><div class="section-title">${s.t("Tax Card (PDF Document):", "مستند البطاقة الضريبية (PDF):")}</div><br><p style="font-size:16px;"><b>${s.t("PDF Attached File:", "ملف PDF مرفق:")}</b> $url</p></div>';
+        contentHtml += '''
+          <div class="tax-card-page">
+            <div class="section-title">${s.t("Tax Card (PDF Document):", "مستند البطاقة الضريبية (PDF):")}</div>
+            <br>
+            <p style="font-size: 16px;"><b>${s.t("Attached PDF Document File", "ملف PDF المرفق للشركة")}</b></p>
+            <p style="font-size: 12px; color: #555; word-break: break-all;">$url</p>
+            <br>
+            <a href="$url" target="_blank" style="padding: 10px 20px; background-color: #008DDA; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+              ${s.t("Open & Print PDF File Separately", "فتح وطباعة ملف الـ PDF بشكل مستقل")}
+            </a>
+          </div>
+        ''';
       }
     }
 
@@ -2223,7 +2273,6 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
         <script>
           window.onload = function() {
             window.print();
-            setTimeout(function() { window.close(); }, 500);
           };
         </script>
       </body>
