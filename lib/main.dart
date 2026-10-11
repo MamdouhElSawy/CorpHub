@@ -2122,7 +2122,8 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
         .where((c) => _selectedContacts.contains(c['id'].toString()))
         .toList();
 
-    final printWindow = html.window.open('', '_blank');
+    // تحديد نوع نافذة الطباعة بصراحة كـ html.Window لحل خطأ الـ Build
+    final html.Window? printWindow = html.window.open('', '_blank');
     if (printWindow == null) return;
 
     String contentHtml = '''
