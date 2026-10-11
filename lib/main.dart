@@ -2424,8 +2424,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 decoration: InputDecoration(labelText: s.t('Role / Permissions', 'الصلاحية والرتبة')),
                 items: [
                   DropdownMenuItem(value: 'viewer', child: Text(s.t('Viewer (Read Only)', 'مشاهد (تصفح فقط)'))),
-                  DropdownMenuItem(value: 'editor', child: Text('Editor (صلاحية إضافة وتعديل)'))),
-                  DropdownMenuItem(value: 'admin', child: Text('Admin (تحكم كامل)'))),
+                  DropdownMenuItem(value: 'editor', child: Text(s.t('Editor (Can Add/Edit)', 'محرر (صلاحية إضافة وتعديل)'))),
+                  DropdownMenuItem(value: 'admin', child: Text(s.t('Admin (Full Control)', 'مدير نظام (تحكم كامل)'))),
                 ],
                 onChanged: (val) => setDialogState(() => role = val!),
               ),
@@ -2813,6 +2813,22 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       TextCellValue('Group CEO'),
       TextCellValue('+201200000000'),
       TextCellValue('https://...'),
+    ]);
+
+    sheet.appendRow([
+      TextCellValue('EGL Transport & Customs'),
+      TextCellValue('المصرية للنقل والتخليص الجمركي'),
+      TextCellValue('FALSE'),
+      TextCellValue('EGL Logistics Group'),
+      TextCellValue('operation'),
+      TextCellValue('Alexandria Port, Gate 27'),
+      TextCellValue('ميناء الإسكندرية، باب 27'),
+      TextCellValue('https://maps.app.goo.gl/...'),
+      TextCellValue('Mohamed Ali'),
+      TextCellValue('محمد علي'),
+      TextCellValue('Operations Manager'),
+      TextCellValue('+201211111111'),
+      TextCellValue(''),
     ]);
 
     final bytes = excel.encode();
