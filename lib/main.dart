@@ -320,6 +320,113 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     }
   }
 
+  void _openChangePasswordDialog() {
+    final s = AppState.instance;
+    final oldPassCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    final confirmPassCtrl = TextEditingController();
+    String? err;
+    bool saving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => Directionality(
+        textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(s.t('Change Password', 'تغيير كلمة المرور')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: oldPassCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(labelText: s.t('Current Password', 'كلمة المرور الحالية')),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: newPassCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(labelText: s.t('New Password', 'كلمة المرور الجديدة')),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: confirmPassCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(labelText: s.t('Confirm New Password', 'تأكيد كلمة المرور الجديدة')),
+                ),
+                if (err != null) ...[
+                  const SizedBox(height: 10),
+                  Text(err!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(s.t('Cancel', 'إلغاء')),
+              ),
+              ElevatedButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final oldP = oldPassCtrl.text.trim();
+                        final newP = newPassCtrl.text.trim();
+                        final confP = confirmPassCtrl.text.trim();
+
+                        if (oldP != _currentUser!['password_hash']) {
+                          setDialogState(() => err = s.t('Incorrect current password', 'كلمة المرور الحالية غير صحيحة'));
+                          return;
+                        }
+                        if (newP.isEmpty) {
+                          setDialogState(() => err = s.t('New password cannot be empty', 'كلمة المرور لا يمكن أن تكون فارغة'));
+                          return;
+                        }
+                        if (newP != confP) {
+                          setDialogState(() => err = s.t('Passwords do not match', 'كلمتا المرور غير متطابقتين'));
+                          return;
+                        }
+
+                        setDialogState(() {
+                          saving = true;
+                          err = null;
+                        });
+
+                        try {
+                          await Supabase.instance.client
+                              .from('app_users')
+                              .update({'password_hash': newP})
+                              .eq('id', _currentUser!['id']);
+
+                          _currentUser!['password_hash'] = newP;
+                          final prefs = await SharedPreferences.getInstance();
+                          if (prefs.containsKey('saved_user_session')) {
+                            await prefs.setString('saved_user_session', jsonEncode(_currentUser));
+                          }
+
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(s.t('Password changed successfully!', 'تم تغيير كلمة المرور بنجاح!'))),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() => err = e.toString());
+                        } finally {
+                          setDialogState(() => saving = false);
+                        }
+                      },
+                child: saving ? const CircularProgressIndicator() : Text(s.t('Update Password', 'تحديث كلمة المرور')),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openLoginDialog() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -389,9 +496,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      '${s.t("Tax Card - ", "البطاقة الضريبية - ")} $companyName',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    Expanded(
+                      child: Text(
+                        '${s.t("Tax Card - ", "البطاقة الضريبية - ")} $companyName',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
                   ],
@@ -405,13 +515,15 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  spacing: 10,
+                  runSpacing: 10,
                   children: [
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
                       icon: const Icon(Icons.share, size: 16),
-                      label: Text(s.t('Share Tax Card (WhatsApp)', 'مشاركة البطاقة بالواتساب')),
+                      label: Text(s.t('Share Tax Card', 'مشاركة البطاقة')),
                       onPressed: () => _shareTaxCardAsWhatsApp(url, companyName),
                     ),
                     ElevatedButton.icon(
@@ -496,21 +608,27 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0284C7),
-                borderRadius: BorderRadius.circular(8),
+        titleSpacing: isDesktop ? 16 : 8,
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0284C7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('CorpHub', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
               ),
-              child: const Text('CorpHub', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.language, size: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(),
             onPressed: () {
               s.toggleLanguage();
               setState(() {});
@@ -518,60 +636,113 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           ),
           IconButton(
             icon: Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined, size: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(),
             onPressed: () => s.toggleTheme(),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           if (!isLoggedIn)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0284C7),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   elevation: 0,
                 ),
-                icon: const Icon(Icons.login, size: 16),
-                label: Text(s.t('Login', 'دخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.login, size: 14),
+                label: Text(s.t('Login', 'دخول'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 onPressed: _openLoginDialog,
               ),
             )
           else
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               child: PopupMenuButton<String>(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Theme.of(context).primaryColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       CircleAvatar(
-                        radius: 12,
+                        radius: 11,
                         backgroundColor: const Color(0xFF0284C7),
-                        child: Text((_currentUser!['username'] ?? 'U')[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 11)),
+                        child: Text((_currentUser!['username'] ?? 'U')[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
-                      const SizedBox(width: 8),
-                      Text(_currentUser!['username'] ?? 'User', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      const SizedBox(width: 4),
+                      Text(_currentUser!['username'] ?? 'User', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      const Icon(Icons.arrow_drop_down, size: 16),
                     ],
                   ),
                 ),
                 onSelected: (val) async {
-                  if (val == 'logout') {
+                  if (val == 'admin') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => Directionality(
+                          textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                          child: AdminPanelScreen(
+                            privacy: _privacy,
+                            onUpdate: _loadAll,
+                            companies: _companies,
+                            currentUserId: _currentUser?['id'],
+                          ),
+                        ),
+                      ),
+                    );
+                  } else if (val == 'password') {
+                    _openChangePasswordDialog();
+                  } else if (val == 'logout') {
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.remove('saved_user_session');
                     setState(() => _currentUser = null);
                   }
                 },
                 itemBuilder: (ctx) => [
-                  PopupMenuItem(value: 'logout', child: Text(s.t('Logout', 'تسجيل الخروج'))),
+                  if (_currentUser!['role'] == 'admin')
+                    PopupMenuItem(
+                      value: 'admin',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.admin_panel_settings, color: Color(0xFF0284C7), size: 18),
+                          const SizedBox(width: 8),
+                          Text(s.t('Admin Panel', 'لوحة تحكم الإدارة')),
+                        ],
+                      ),
+                    ),
+                  PopupMenuItem(
+                    value: 'password',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.password, color: Colors.orangeAccent, size: 18),
+                        const SizedBox(width: 8),
+                        Text(s.t('Change Password', 'تغيير كلمة المرور')),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.logout, color: Colors.redAccent, size: 18),
+                        const SizedBox(width: 8),
+                        Text(s.t('Logout', 'تسجيل الخروج')),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
         ],
       ),
       floatingActionButton: _canEdit
@@ -592,7 +763,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   child: Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(12),
                         child: TextField(
                           decoration: InputDecoration(
                             hintText: s.t('Search company...', 'ابحث عن شركة...'),
@@ -608,7 +779,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                         child: _loading
                             ? const Center(child: CircularProgressIndicator())
                             : ListView.separated(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                 itemCount: filtered.length,
                                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                                 itemBuilder: (ctx, i) {
@@ -716,7 +887,7 @@ class ModernCompanyCardTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF0284C7).withOpacity(0.12) : Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
@@ -744,7 +915,12 @@ class ModernCompanyCardTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, fontSize: 14)),
+                  Text(
+                    name,
+                    style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, fontSize: 14),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   if (isGroup)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
@@ -802,6 +978,14 @@ class CompanyDetailsContent extends StatelessWidget {
     }
   }
 
+  void _shareContactWhatsApp(String cName, String cRole, String phone, String companyName) async {
+    final msg = '${AppProvider.t("Contact Person for:", "مسؤول التواصل لشركة:")} $companyName\n👤 $cName\n💼 $cRole\n📞 $phone';
+    final waUri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
+    if (await canLaunchUrl(waUri)) {
+      await launchUrl(waUri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
@@ -820,45 +1004,59 @@ class CompanyDetailsContent extends StatelessWidget {
     final isGroup = company['is_group'] == true;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Card (Responsive)
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)],
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isGroup ? Colors.amber.withOpacity(0.15) : const Color(0xFF0284C7).withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              isGroup ? s.t('Holding Group', 'مجموعة قابضة') : s.t('Standard Company', 'شركة مسجلة'),
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isGroup ? Colors.amber.shade800 : const Color(0xFF0284C7)),
-                            ),
-                          ),
-                        ],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                        softWrap: true,
+                      ),
+                    ),
+                    if (canEdit) ...[
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Color(0xFF0284C7), size: 20),
+                        onPressed: onEdit,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                        onPressed: onDelete,
                       ),
                     ],
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isGroup ? Colors.amber.withOpacity(0.15) : const Color(0xFF0284C7).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    isGroup ? s.t('Holding Group', 'مجموعة قابضة') : s.t('Standard Company', 'شركة مسجلة'),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isGroup ? Colors.amber.shade800 : const Color(0xFF0284C7)),
                   ),
                 ),
+                const SizedBox(height: 16),
                 Wrap(
                   spacing: 8,
+                  runSpacing: 8,
                   children: [
                     if (company['tax_card_url'] != null)
                       ElevatedButton.icon(
@@ -866,11 +1064,11 @@ class CompanyDetailsContent extends StatelessWidget {
                           backgroundColor: const Color(0xFF0284C7),
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           elevation: 0,
                         ),
-                        icon: const Icon(Icons.badge_outlined, size: 18),
-                        label: Text(s.t('View Tax Card', 'عرض البطاقة الضريبية')),
+                        icon: const Icon(Icons.badge_outlined, size: 16),
+                        label: Text(s.t('View Tax Card', 'عرض البطاقة الضريبية'), style: const TextStyle(fontSize: 13)),
                         onPressed: onViewTaxCard,
                       ),
                     if (isLoggedIn)
@@ -879,11 +1077,11 @@ class CompanyDetailsContent extends StatelessWidget {
                           backgroundColor: const Color(0xFF25D366),
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           elevation: 0,
                         ),
-                        icon: const Icon(Icons.share, size: 18),
-                        label: Text(s.t('Share Profile', 'مشاركة البروفايل')),
+                        icon: const Icon(Icons.share, size: 16),
+                        label: Text(s.t('Share Profile', 'مشاركة البروفايل'), style: const TextStyle(fontSize: 13)),
                         onPressed: onShareProfile,
                       ),
                   ],
@@ -893,6 +1091,7 @@ class CompanyDetailsContent extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
+          // Addresses
           if (addresses.isNotEmpty) ...[
             Text(s.t('Addresses & Locations', 'العناوين والخرائط'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
@@ -903,7 +1102,7 @@ class CompanyDetailsContent extends StatelessWidget {
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(14),
@@ -911,8 +1110,8 @@ class CompanyDetailsContent extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(isMail ? Icons.location_city_rounded : Icons.factory_rounded, color: const Color(0xFF0284C7), size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(addrText, style: const TextStyle(fontSize: 14))),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(addrText, style: const TextStyle(fontSize: 13))),
                     if (isLoggedIn && mapUrl != null && mapUrl.trim().isNotEmpty) ...[
                       IconButton(
                         icon: const Icon(Icons.map_rounded, color: Colors.redAccent, size: 20),
@@ -932,42 +1131,69 @@ class CompanyDetailsContent extends StatelessWidget {
             const SizedBox(height: 20),
           ],
 
+          // Contacts
           if (contacts.isNotEmpty) ...[
             Text(s.t('Contacts & Personnel', 'مسؤولو التواصل'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 320,
-                mainAxisExtent: 110,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: contacts.length,
-              itemBuilder: (ctx, idx) {
-                final c = contacts[idx];
-                final cName = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
-                final cRole = isLoggedIn ? (s.isArabic ? (c['role_ar'] ?? c['role_en'] ?? '') : (c['role_en'] ?? c['role_ar'] ?? '')) : '****';
-                final phone = isLoggedIn ? (c['phone'] ?? '') : '****';
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 450;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: isNarrow ? 1 : 2,
+                    mainAxisExtent: 115,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemCount: contacts.length,
+                  itemBuilder: (ctx, idx) {
+                    final c = contacts[idx];
+                    final cName = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
+                    final cRole = isLoggedIn ? (s.isArabic ? (c['role_ar'] ?? c['role_en'] ?? '') : (c['role_en'] ?? c['role_ar'] ?? '')) : '****';
+                    final phone = isLoggedIn ? (c['phone'] ?? '') : '****';
 
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(cName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                      const SizedBox(height: 4),
-                      Text(cRole, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-                      const SizedBox(height: 4),
-                      Text(phone, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7))),
-                    ],
-                  ),
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(cName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 2),
+                                Text(cRole, style: TextStyle(fontSize: 12, color: Colors.grey.shade500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 4),
+                                Text(phone, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7))),
+                              ],
+                            ),
+                          ),
+                          if (isLoggedIn) ...[
+                            IconButton(
+                              icon: const Icon(Icons.share, size: 18, color: Color(0xFF25D366)),
+                              tooltip: s.t('Share Contact', 'مشاركة المسؤول'),
+                              onPressed: () => _shareContactWhatsApp(cName, cRole, phone, name),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.copy, size: 18, color: Color(0xFF0284C7)),
+                              tooltip: s.t('Copy', 'نسخ'),
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: "Name: $cName\nRole: $cRole\nPhone: $phone"));
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Copied!', 'تم النسخ!'))));
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -1059,8 +1285,13 @@ class MobileCompanyDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppState.instance;
+    final name = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
+
     return Scaffold(
-      appBar: AppBar(title: Text(company['name_ar'] ?? company['name_en'] ?? '')),
+      appBar: AppBar(
+        title: Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      ),
       body: CompanyDetailsContent(
         company: company,
         allCompanies: allCompanies,
@@ -1206,7 +1437,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
       child: Center(
         child: Container(
           width: 380,
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(28),
@@ -1425,6 +1656,23 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class AdminPanelScreen extends StatelessWidget {
+  final Map<String, bool> privacy;
+  final VoidCallback onUpdate;
+  final List<Map<String, dynamic>> companies;
+  final String? currentUserId;
+
+  const AdminPanelScreen({super.key, required this.privacy, required this.onUpdate, required this.companies, this.currentUserId});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('لوحة تحكم الإدارة')),
+      body: const Center(child: Text('لوحة التحكم قيد التصميم...')),
     );
   }
 }
