@@ -326,7 +326,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       barrierDismissible: true,
       builder: (_) => Directionality(
         textDirection: AppState.instance.isArabic ? TextDirection.rtl : TextDirection.ltr,
-        child: const GlassLoginDialog(),
+        child: const CleanLoginDialog(),
       ),
     );
     if (res != null) {
@@ -353,8 +353,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     if (res == true) _loadAll();
   }
 
-  void _viewTaxCardImage(String? url, String companyName) {
+  void _viewTaxCardImage(Map<String, dynamic> company) {
     final s = AppState.instance;
+    final url = company['tax_card_url'];
+    final companyName = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
+
     if (_currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(s.t('Please login to view tax card', 'برجاء تسجيل الدخول لعرض البطاقة الضريبية'))),
@@ -363,7 +366,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       return;
     }
 
-    if (url == null || url.isEmpty) {
+    if (url == null || url.toString().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(s.t('No tax card uploaded', 'لا توجد صورة مسجلة'))),
       );
@@ -401,6 +404,24 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                         : Image.network(url, fit: BoxFit.contain),
                   ),
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+                      icon: const Icon(Icons.share, size: 16),
+                      label: Text(s.t('Share Tax Card (WhatsApp)', 'مشاركة البطاقة بالواتساب')),
+                      onPressed: () => _shareTaxCardAsWhatsApp(url, companyName),
+                    ),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0284C7), foregroundColor: Colors.white),
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: Text(s.t('Open Original', 'فتح الرابط الأصلي')),
+                      onPressed: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -409,12 +430,37 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  void _shareTaxCardAsImage(String? url, String companyName) async {
+  void _shareTaxCardAsWhatsApp(String? url, String companyName) async {
     final s = AppState.instance;
     if (_currentUser == null || url == null || url.trim().isEmpty) return;
-
     final msg = '${s.t("Tax Card Document for:", "مستند البطاقة الضريبية لشركة:")} $companyName\n\n$url';
     final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
+    if (await canLaunchUrl(wa)) {
+      await launchUrl(wa, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void _shareCompanyProfile(Map<String, dynamic> company) async {
+    final s = AppState.instance;
+    final name = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
+    
+    final addrs = (company['company_addresses'] as List? ?? []).map((a) {
+      final addrText = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
+      return '• [${a['type']}]: $addrText';
+    }).join('\n');
+
+    final contacts = (company['company_contacts'] as List? ?? []).map((c) {
+      final cName = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
+      final role = s.isArabic ? (c['role_ar'] ?? c['role_en'] ?? '') : (c['role_en'] ?? c['role_ar'] ?? '');
+      return '👤 $cName ($role) - ${c['phone']}';
+    }).join('\n');
+
+    String summary = '${s.t("Company Profile:", "بروفايل الشركة:")} $name\n\n📍 ${s.t("Addresses", "العناوين")}:\n$addrs\n\n📞 ${s.t("Contacts", "المسؤولون")}:\n$contacts';
+    if (company['tax_card_url'] != null) {
+      summary += '\n\n📄 ${s.t("Tax Card", "البطاقة الضريبية")}: ${company['tax_card_url']}';
+    }
+
+    final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(summary)}');
     if (await canLaunchUrl(wa)) {
       await launchUrl(wa, mode: LaunchMode.externalApplication);
     }
@@ -541,7 +587,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           ? Center(child: Text(s.t('Browsing restricted to members', 'التصفح مغلق لغير المسجلين')))
           : Row(
               children: [
-                // 1. القائمة اليسرى لقائمة الشركات (Modern Card Tiles)
                 SizedBox(
                   width: isDesktop ? _leftPaneWidth : MediaQuery.of(context).size.width,
                   child: Column(
@@ -588,8 +633,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                               privacy: _privacy,
                                               onEdit: () => _openAddEditCompanyDialog(comp),
                                               onDelete: () => _deleteSingleCompany(comp),
-                                              onViewTaxCard: () => _viewTaxCardImage(comp['tax_card_url'], s.isArabic ? (comp['name_ar'] ?? '') : (comp['name_en'] ?? '')),
-                                              onShare: () => _shareTaxCardAsImage(comp['tax_card_url'], s.isArabic ? (comp['name_ar'] ?? '') : (comp['name_en'] ?? '')),
+                                              onViewTaxCard: () => _viewTaxCardImage(comp),
+                                              onShareProfile: () => _shareCompanyProfile(comp),
                                             ),
                                           ),
                                         );
@@ -602,8 +647,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     ],
                   ),
                 ),
-                
-                // 2. الفاصل التفاعلي لتعديل الحجم
                 if (isDesktop) ...[
                   GestureDetector(
                     behavior: HitTestBehavior.translucent,
@@ -627,8 +670,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       ),
                     ),
                   ),
-
-                  // 3. اللوحة اليمنى لعرض البيانات (Modern Dashboard View)
                   Expanded(
                     child: _selectedCompanyForPanel == null
                         ? Center(
@@ -645,14 +686,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                             privacy: _privacy,
                             onEdit: () => _openAddEditCompanyDialog(_selectedCompanyForPanel),
                             onDelete: () => _deleteSingleCompany(_selectedCompanyForPanel!),
-                            onViewTaxCard: () => _viewTaxCardImage(
-                              _selectedCompanyForPanel!['tax_card_url'],
-                              s.isArabic ? (_selectedCompanyForPanel!['name_ar'] ?? '') : (_selectedCompanyForPanel!['name_en'] ?? ''),
-                            ),
-                            onShare: () => _shareTaxCardAsImage(
-                              _selectedCompanyForPanel!['tax_card_url'],
-                              s.isArabic ? (_selectedCompanyForPanel!['name_ar'] ?? '') : (_selectedCompanyForPanel!['name_en'] ?? ''),
-                            ),
+                            onViewTaxCard: () => _viewTaxCardImage(_selectedCompanyForPanel!),
+                            onShareProfile: () => _shareCompanyProfile(_selectedCompanyForPanel!),
                             onClose: () => setState(() => _selectedCompanyForPanel = null),
                           ),
                   ),
@@ -663,18 +698,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 }
 
-// ----------------- كارت الشركة المودرن القائم على اليسار -----------------
 class ModernCompanyCardTile extends StatelessWidget {
   final Map<String, dynamic> company;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const ModernCompanyCardTile({
-    super.key,
-    required this.company,
-    required this.isSelected,
-    required this.onTap,
-  });
+  const ModernCompanyCardTile({super.key, required this.company, required this.isSelected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -691,17 +720,9 @@ class ModernCompanyCardTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF0284C7).withOpacity(0.12) : Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF0284C7) : Colors.transparent,
-            width: 1.5,
-          ),
+          border: Border.all(color: isSelected ? const Color(0xFF0284C7) : Colors.transparent, width: 1.5),
           boxShadow: [
-            if (!isSelected)
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
+            if (!isSelected) BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2)),
           ],
         ),
         child: Row(
@@ -723,20 +744,11 @@ class ModernCompanyCardTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    name,
-                    style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
+                  Text(name, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, fontSize: 14)),
                   if (isGroup)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        s.t('Holding Group', 'مجموعة قابضة'),
-                        style: TextStyle(fontSize: 11, color: Colors.amber.shade800, fontWeight: FontWeight.bold),
-                      ),
+                      child: Text(s.t('Holding Group', 'مجموعة قابضة'), style: TextStyle(fontSize: 11, color: Colors.amber.shade800, fontWeight: FontWeight.bold)),
                     ),
                 ],
               ),
@@ -749,7 +761,6 @@ class ModernCompanyCardTile extends StatelessWidget {
   }
 }
 
-// ----------------- شاشة تفاصيل البيانات المودرن (Dashboard Style) -----------------
 class CompanyDetailsContent extends StatelessWidget {
   final Map<String, dynamic> company;
   final List<Map<String, dynamic>> allCompanies;
@@ -759,7 +770,7 @@ class CompanyDetailsContent extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onViewTaxCard;
-  final VoidCallback onShare;
+  final VoidCallback onShareProfile;
 
   const CompanyDetailsContent({
     super.key,
@@ -771,7 +782,7 @@ class CompanyDetailsContent extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onViewTaxCard,
-    required this.onShare,
+    required this.onShareProfile,
   });
 
   void _openMaps(String? url) async {
@@ -779,6 +790,15 @@ class CompanyDetailsContent extends StatelessWidget {
     final uri = Uri.parse(url.trim());
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void _shareLocationWhatsApp(String? url, String companyName) async {
+    if (url == null || url.trim().isEmpty) return;
+    final msg = '${AppProvider.t("Location for:", "موقع مقر شركة:")} $companyName\n📍 $url';
+    final waUri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
+    if (await canLaunchUrl(waUri)) {
+      await launchUrl(waUri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -804,7 +824,6 @@ class CompanyDetailsContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Card
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -838,25 +857,42 @@ class CompanyDetailsContent extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (company['tax_card_url'] != null)
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0284C7),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      elevation: 0,
-                    ),
-                    icon: const Icon(Icons.badge_outlined, size: 18),
-                    label: Text(s.t('View Tax Card', 'عرض البطاقة الضريبية')),
-                    onPressed: onViewTaxCard,
-                  ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    if (company['tax_card_url'] != null)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0284C7),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          elevation: 0,
+                        ),
+                        icon: const Icon(Icons.badge_outlined, size: 18),
+                        label: Text(s.t('View Tax Card', 'عرض البطاقة الضريبية')),
+                        onPressed: onViewTaxCard,
+                      ),
+                    if (isLoggedIn)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF25D366),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          elevation: 0,
+                        ),
+                        icon: const Icon(Icons.share, size: 18),
+                        label: Text(s.t('Share Profile', 'مشاركة البروفايل')),
+                        onPressed: onShareProfile,
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
           const SizedBox(height: 20),
 
-          // Section Addresses
           if (addresses.isNotEmpty) ...[
             Text(s.t('Addresses & Locations', 'العناوين والخرائط'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
@@ -877,11 +913,18 @@ class CompanyDetailsContent extends StatelessWidget {
                     Icon(isMail ? Icons.location_city_rounded : Icons.factory_rounded, color: const Color(0xFF0284C7), size: 20),
                     const SizedBox(width: 12),
                     Expanded(child: Text(addrText, style: const TextStyle(fontSize: 14))),
-                    if (isLoggedIn && mapUrl != null && mapUrl.trim().isNotEmpty)
+                    if (isLoggedIn && mapUrl != null && mapUrl.trim().isNotEmpty) ...[
                       IconButton(
                         icon: const Icon(Icons.map_rounded, color: Colors.redAccent, size: 20),
+                        tooltip: s.t('Open Map', 'فتح الخريطة'),
                         onPressed: () => _openMaps(mapUrl),
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.share, color: Color(0xFF25D366), size: 20),
+                        tooltip: s.t('Share Location', 'مشاركة اللوكيشن'),
+                        onPressed: () => _shareLocationWhatsApp(mapUrl, name),
+                      ),
+                    ],
                   ],
                 ),
               );
@@ -889,7 +932,6 @@ class CompanyDetailsContent extends StatelessWidget {
             const SizedBox(height: 20),
           ],
 
-          // Section Contacts
           if (contacts.isNotEmpty) ...[
             Text(s.t('Contacts & Personnel', 'مسؤولو التواصل'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
@@ -936,22 +978,141 @@ class CompanyDetailsContent extends StatelessWidget {
   }
 }
 
-// ----------------- نافذة اللوج إن الزجاجية الأنيقة (Glassmorphism Dialog) -----------------
-class GlassLoginDialog extends StatefulWidget {
-  const GlassLoginDialog({super.key});
+class DesktopSidePanel extends StatelessWidget {
+  final Map<String, dynamic> company;
+  final List<Map<String, dynamic>> allCompanies;
+  final bool isLoggedIn;
+  final bool canEdit;
+  final Map<String, bool> privacy;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onViewTaxCard;
+  final VoidCallback onShareProfile;
+  final VoidCallback onClose;
+
+  const DesktopSidePanel({
+    super.key,
+    required this.company,
+    required this.allCompanies,
+    required this.isLoggedIn,
+    required this.canEdit,
+    required this.privacy,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onViewTaxCard,
+    required this.onShareProfile,
+    required this.onClose,
+  });
 
   @override
-  State<GlassLoginDialog> createState() => _GlassLoginDialogState();
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8, right: 16),
+            child: IconButton(icon: const Icon(Icons.close), onPressed: onClose),
+          ),
+        ),
+        Expanded(
+          child: CompanyDetailsContent(
+            company: company,
+            allCompanies: allCompanies,
+            isLoggedIn: isLoggedIn,
+            canEdit: canEdit,
+            privacy: privacy,
+            onEdit: onEdit,
+            onDelete: onDelete,
+            onViewTaxCard: onViewTaxCard,
+            onShareProfile: onShareProfile,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _GlassLoginDialogState extends State<GlassLoginDialog> {
+class MobileCompanyDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> company;
+  final List<Map<String, dynamic>> allCompanies;
+  final bool isLoggedIn;
+  final bool canEdit;
+  final Map<String, bool> privacy;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onViewTaxCard;
+  final VoidCallback onShareProfile;
+
+  const MobileCompanyDetailScreen({
+    super.key,
+    required this.company,
+    required this.allCompanies,
+    required this.isLoggedIn,
+    required this.canEdit,
+    required this.privacy,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onViewTaxCard,
+    required this.onShareProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(company['name_ar'] ?? company['name_en'] ?? '')),
+      body: CompanyDetailsContent(
+        company: company,
+        allCompanies: allCompanies,
+        isLoggedIn: isLoggedIn,
+        canEdit: canEdit,
+        privacy: privacy,
+        onEdit: onEdit,
+        onDelete: onDelete,
+        onViewTaxCard: onViewTaxCard,
+        onShareProfile: onShareProfile,
+      ),
+    );
+  }
+}
+
+class AppProvider {
+  static String t(String en, String ar) => AppState.instance.isArabic ? ar : en;
+}
+
+class AdvancedCompanyDialog extends StatelessWidget {
+  final Map<String, dynamic>? company;
+  final List<Map<String, dynamic>> allCompanies;
+  final bool isMobile;
+  final VoidCallback? onDeleteRequested;
+
+  const AdvancedCompanyDialog({super.key, this.company, required this.allCompanies, required this.isMobile, this.onDeleteRequested});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('إضافة / تعديل شركة'),
+      content: const Text('شاشة التعديل متاحة...'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
+    );
+  }
+}
+
+class CleanLoginDialog extends StatefulWidget {
+  const CleanLoginDialog({super.key});
+
+  @override
+  State<CleanLoginDialog> createState() => _CleanLoginDialogState();
+}
+
+class _CleanLoginDialogState extends State<CleanLoginDialog> {
   final _pinController = TextEditingController();
   final _passController = TextEditingController();
   bool _stayLoggedIn = true;
   bool _loading = false;
   bool _obscurePass = true;
   String? _error;
-  int _viewMode = 0; // 0: Login, 1: Request Access, 2: Reset Password
+  int _viewMode = 0;
 
   final _nameReqController = TextEditingController();
   final _phoneReqController = TextEditingController();
@@ -1006,9 +1167,7 @@ class _GlassLoginDialogState extends State<GlassLoginDialog> {
     final name = _nameReqController.text.trim();
     final phone = _phoneReqController.text.trim();
     if (name.isEmpty || phone.isEmpty) return;
-
     await Supabase.instance.client.from('access_requests').insert({'full_name': name, 'phone': phone});
-
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1045,383 +1204,227 @@ class _GlassLoginDialogState extends State<GlassLoginDialog> {
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16),
       child: Center(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-            child: Container(
-              width: 380,
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 30,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
+        child: Container(
+          width: 380,
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icon Header
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(Icons.login_rounded, color: Color(0xFF0284C7), size: 28),
-                  ),
-                  const SizedBox(height: 16),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0284C7).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.login_rounded, color: Color(0xFF0284C7), size: 28),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _viewMode == 0
+                    ? s.t('Sign in to CorpHub', 'تسجيل الدخول')
+                    : _viewMode == 1
+                        ? s.t('Request Access', 'طلب انضمام')
+                        : s.t('Reset Password', 'استعادة كلمة المرور'),
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                s.t('Enter your details to proceed', 'أدخل بياناتك للمتابعة'),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              ),
+              const SizedBox(height: 24),
 
-                  Text(
-                    _viewMode == 0
-                        ? s.t('Sign in to CorpHub', 'تسجيل الدخول')
-                        : _viewMode == 1
-                            ? s.t('Request Access', 'طلب انضمام')
-                            : s.t('Reset Password', 'استعادة كلمة المرور'),
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              if (_viewMode == 0) ...[
+                TextField(
+                  controller: _pinController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  textAlign: TextAlign.center,
+                  decoration: InputDecoration(
+                    counterText: '',
+                    hintText: s.t('6-Digit PIN', 'كود الدخول (6 أرقام)'),
+                    prefixIcon: const Icon(Icons.key_rounded, size: 20),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.06),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    s.t('Enter your details to proceed', 'أدخل بياناتك للمتابعة'),
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _passController,
+                  obscureText: _obscurePass,
+                  textAlign: TextAlign.center,
+                  decoration: InputDecoration(
+                    hintText: s.t('Password', 'كلمة المرور'),
+                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscurePass ? Icons.visibility_off : Icons.visibility, size: 18),
+                      onPressed: () => setState(() => _obscurePass = !_obscurePass),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.06),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                   ),
-                  const SizedBox(height: 24),
-
-                  if (_viewMode == 0) ...[
-                    TextField(
-                      controller: _pinController,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        counterText: '',
-                        hintText: s.t('6-Digit PIN', 'كود الدخول (6 أرقام)'),
-                        prefixIcon: const Icon(Icons.key_rounded, size: 20),
-                        filled: true,
-                        fillColor: Colors.grey.withOpacity(0.06),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(s.t('Stay logged in', 'تذكرني'), style: const TextStyle(fontSize: 12)),
+                  value: _stayLoggedIn,
+                  onChanged: (v) => setState(() => _stayLoggedIn = v ?? false),
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                  ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0284C7),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _passController,
-                      obscureText: _obscurePass,
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        hintText: s.t('Password', 'كلمة المرور'),
-                        prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscurePass ? Icons.visibility_off : Icons.visibility, size: 18),
-                          onPressed: () => setState(() => _obscurePass = !_obscurePass),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey.withOpacity(0.06),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: Text(s.t('Stay logged in', 'تذكرني'), style: const TextStyle(fontSize: 12)),
-                      value: _stayLoggedIn,
-                      onChanged: (v) => setState(() => _stayLoggedIn = v ?? false),
-                    ),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
-                      ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0284C7),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          elevation: 0,
-                        ),
-                        onPressed: _loading ? null : _login,
-                        child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Log In', 'دخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        TextButton(
-                          onPressed: () => setState(() => _viewMode = 1),
-                          child: Text(s.t('Request Access', 'طلب حساب'), style: const TextStyle(fontSize: 12)),
-                        ),
-                        TextButton(
-                          onPressed: () => setState(() => _viewMode = 2),
-                          child: Text(s.t('Forgot Password?', 'نسيت المرور؟'), style: const TextStyle(fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                  ] else if (_viewMode == 1) ...[
-                    TextField(
-                      controller: _nameReqController,
-                      decoration: InputDecoration(
-                        hintText: s.t('Full Name', 'الاسم بالكامل'),
-                        prefixIcon: const Icon(Icons.person_outline, size: 20),
-                        filled: true,
-                        fillColor: Colors.grey.withOpacity(0.06),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _phoneReqController,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        hintText: s.t('WhatsApp Number', 'رقم الواتساب'),
-                        prefixIcon: const Icon(Icons.phone_outlined, size: 20),
-                        filled: true,
-                        fillColor: Colors.grey.withOpacity(0.06),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0284C7),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          elevation: 0,
-                        ),
-                        onPressed: _submitAccountRequest,
-                        child: Text(s.t('Submit Request', 'إرسال الطلب'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    onPressed: _loading ? null : _login,
+                    child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Log In', 'دخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
                     TextButton(
-                      onPressed: () => setState(() => _viewMode = 0),
-                      child: Text(s.t('Back to log in', 'الرجوع لتسجيل الدخول')),
+                      onPressed: () => setState(() => _viewMode = 1),
+                      child: Text(s.t('Request Access', 'طلب حساب'), style: const TextStyle(fontSize: 12)),
                     ),
-                  ] else ...[
-                    TextField(
-                      controller: _resetPinController,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      decoration: InputDecoration(
-                        counterText: '',
-                        hintText: s.t('6-Digit PIN', 'كود الدخول'),
-                        prefixIcon: const Icon(Icons.key_rounded, size: 20),
-                        filled: true,
-                        fillColor: Colors.grey.withOpacity(0.06),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _resetPhoneController,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        hintText: s.t('Phone Number', 'رقم الهاتف'),
-                        prefixIcon: const Icon(Icons.phone_outlined, size: 20),
-                        filled: true,
-                        fillColor: Colors.grey.withOpacity(0.06),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _resetNewPassController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        hintText: s.t('New Password', 'كلمة المرور الجديدة'),
-                        prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
-                        filled: true,
-                        fillColor: Colors.grey.withOpacity(0.06),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber.shade800,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          elevation: 0,
-                        ),
-                        onPressed: _submitPasswordResetRequest,
-                        child: Text(s.t('Submit Reset Request', 'إرسال طلب التعيين'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
                     TextButton(
-                      onPressed: () => setState(() => _viewMode = 0),
-                      child: Text(s.t('Back to log in', 'الرجوع لتسجيل الدخول')),
+                      onPressed: () => setState(() => _viewMode = 2),
+                      child: Text(s.t('Forgot Password?', 'نسيت المرور؟'), style: const TextStyle(fontSize: 12)),
                     ),
                   ],
-                ],
-              ),
-            ),
+                ),
+              ] else if (_viewMode == 1) ...[
+                TextField(
+                  controller: _nameReqController,
+                  decoration: InputDecoration(
+                    hintText: s.t('Full Name', 'الاسم بالكامل'),
+                    prefixIcon: const Icon(Icons.person_outline, size: 20),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.06),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _phoneReqController,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    hintText: s.t('WhatsApp Number', 'رقم الواتساب'),
+                    prefixIcon: const Icon(Icons.phone_outlined, size: 20),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.06),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0284C7),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    onPressed: _submitAccountRequest,
+                    child: Text(s.t('Submit Request', 'إرسال الطلب'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => setState(() => _viewMode = 0),
+                  child: Text(s.t('Back to log in', 'الرجوع لتسجيل الدخول')),
+                ),
+              ] else ...[
+                TextField(
+                  controller: _resetPinController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: InputDecoration(
+                    counterText: '',
+                    hintText: s.t('6-Digit PIN', 'كود الدخول'),
+                    prefixIcon: const Icon(Icons.key_rounded, size: 20),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.06),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _resetPhoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    hintText: s.t('Phone Number', 'رقم الهاتف'),
+                    prefixIcon: const Icon(Icons.phone_outlined, size: 20),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.06),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _resetNewPassController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    hintText: s.t('New Password', 'كلمة المرور الجديدة'),
+                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.06),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber.shade800,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    onPressed: _submitPasswordResetRequest,
+                    child: Text(s.t('Submit Reset Request', 'إرسال طلب التعيين'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => setState(() => _viewMode = 0),
+                  child: Text(s.t('Back to log in', 'الرجوع لتسجيل الدخول')),
+                ),
+              ],
+            ],
           ),
         ),
       ),
-    );
-  }
-}
-
-// ----------------- باقي العناصر الثانوية -----------------
-class DesktopSidePanel extends StatelessWidget {
-  final Map<String, dynamic> company;
-  final List<Map<String, dynamic>> allCompanies;
-  final bool isLoggedIn;
-  final bool canEdit;
-  final Map<String, bool> privacy;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onViewTaxCard;
-  final VoidCallback onShare;
-  final VoidCallback onClose;
-
-  const DesktopSidePanel({
-    super.key,
-    required this.company,
-    required this.allCompanies,
-    required this.isLoggedIn,
-    required this.canEdit,
-    required this.privacy,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onViewTaxCard,
-    required this.onShare,
-    required this.onClose,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 8, right: 16),
-            child: IconButton(icon: const Icon(Icons.close), onPressed: onClose),
-          ),
-        ),
-        Expanded(
-          child: CompanyDetailsContent(
-            company: company,
-            allCompanies: allCompanies,
-            isLoggedIn: isLoggedIn,
-            canEdit: canEdit,
-            privacy: privacy,
-            onEdit: onEdit,
-            onDelete: onDelete,
-            onViewTaxCard: onViewTaxCard,
-            onShare: onShare,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class MobileCompanyDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> company;
-  final List<Map<String, dynamic>> allCompanies;
-  final bool isLoggedIn;
-  final bool canEdit;
-  final Map<String, bool> privacy;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onViewTaxCard;
-  final VoidCallback onShare;
-
-  const MobileCompanyDetailScreen({
-    super.key,
-    required this.company,
-    required this.allCompanies,
-    required this.isLoggedIn,
-    required this.canEdit,
-    required this.privacy,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onViewTaxCard,
-    required this.onShare,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(company['name_ar'] ?? company['name_en'] ?? '')),
-      body: CompanyDetailsContent(
-        company: company,
-        allCompanies: allCompanies,
-        isLoggedIn: isLoggedIn,
-        canEdit: canEdit,
-        privacy: privacy,
-        onEdit: onEdit,
-        onDelete: onDelete,
-        onViewTaxCard: onViewTaxCard,
-        onShare: onShare,
-      ),
-    );
-  }
-}
-
-class AdvancedCompanyDialog extends StatelessWidget {
-  final Map<String, dynamic>? company;
-  final List<Map<String, dynamic>> allCompanies;
-  final bool isMobile;
-  final VoidCallback? onDeleteRequested;
-
-  const AdvancedCompanyDialog({super.key, this.company, required this.allCompanies, required this.isMobile, this.onDeleteRequested});
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('إضافة / تعديل شركة'),
-      content: const Text('شاشة التعديل متاحة...'),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
-    );
-  }
-}
-
-class SelectivePrintDialog extends StatelessWidget {
-  final Map<String, dynamic> company;
-  const SelectivePrintDialog({super.key, required this.company});
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('طباعة'),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
-    );
-  }
-}
-
-class AdminPanelScreen extends StatelessWidget {
-  final Map<String, bool> privacy;
-  final VoidCallback onUpdate;
-  final List<Map<String, dynamic>> companies;
-  final String? currentUserId;
-
-  const AdminPanelScreen({super.key, required this.privacy, required this.onUpdate, required this.companies, this.currentUserId});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('لوحة تحكم الإدارة')),
-      body: const Center(child: Text('لوحة التحكم قيد التصميم...')),
     );
   }
 }
