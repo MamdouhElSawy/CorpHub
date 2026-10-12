@@ -28,7 +28,7 @@ void main() async {
   runApp(const CorpHubApp());
 }
 
-// ----------------- إدارة اللغات والمظهر وهيكل EGL -----------------
+// ----------------- إدارة اللغات والمظهر -----------------
 class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
   AppState._();
@@ -132,6 +132,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   bool _loading = true;
   String _searchQuery = '';
   List<Map<String, dynamic>> _companies = [];
+  Map<String, dynamic>? _selectedCompanyForPanel; // للوحة الجانبية على الـ Desktop
   RealtimeChannel? _companiesChannel;
   RealtimeChannel? _userSessionChannel;
 
@@ -272,6 +273,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       builder: (ctx) => Directionality(
         textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
         child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(s.t('Delete Company', 'حذف الشركة')),
           content: Text(
             s.t(
@@ -303,6 +305,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         await Supabase.instance.client.from('companies').delete().eq('id', compId);
 
         if (mounted) {
+          setState(() => _selectedCompanyForPanel = null);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(s.t('Company deleted successfully', 'تم حذف الشركة بنجاح'))),
           );
@@ -459,6 +462,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
   void _viewTaxCardImage(String? url, String companyName) {
     final s = AppState.instance;
+    if (_currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.t('Please login to view tax card', 'برجاء تسجيل الدخول لعرض البطاقة الضريبية'))),
+      );
+      _openLoginDialog();
+      return;
+    }
+
     if (url == null || url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(s.t('No tax card uploaded', 'لا توجد صورة مسجلة'))),
@@ -534,6 +545,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
   void _shareTaxCardAsImage(String? url, String companyName) async {
     final s = AppState.instance;
+    if (_currentUser == null) return;
+
     if (url == null || url.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(s.t('No tax card uploaded', 'لا توجد صورة أو ملف مسجل'))),
@@ -584,7 +597,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     final s = AppState.instance;
     final isLoggedIn = _currentUser != null;
     final canBrowse = (_privacy['allow_public_read'] ?? true) || isLoggedIn;
-    final isMobile = MediaQuery.of(context).size.width < 768;
+    final isDesktop = MediaQuery.of(context).size.width >= 768;
 
     final filtered = _companies.where((c) {
       final nameAr = (c['name_ar'] ?? '').toString().toLowerCase();
@@ -609,262 +622,151 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 1,
-        title: Text(
-          isMobile ? 'CorpHub' : s.t('CorpHub Directory', 'دليل الشركات'),
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 18 : 22),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF008DDA),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text('EGL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              s.t('CorpHub Directory', 'دليل الشركات'),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+          ],
         ),
-        actions: isMobile
-            ? [
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  tooltip: s.t('Options', 'الخيارات'),
-                  onSelected: (val) async {
-                    if (val == 'lang') {
-                      s.toggleLanguage();
-                      setState(() {});
-                    } else if (val == 'theme') {
-                      s.toggleTheme();
-                    } else if (val == 'login') {
-                      _openLoginDialog();
-                    } else if (val == 'admin') {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => Directionality(
-                            textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                            child: AdminPanelScreen(
-                              privacy: _privacy,
-                              onUpdate: _loadAll,
-                              companies: _companies,
-                              currentUserId: _currentUser?['id'],
-                            ),
-                          ),
-                        ),
-                      );
-                    } else if (val == 'password') {
-                      _openChangePasswordDialog();
-                    } else if (val == 'logout') {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.remove('saved_user_session');
-                      setState(() => _currentUser = null);
-                    }
-                  },
-                  itemBuilder: (ctx) => [
-                    PopupMenuItem(
-                      value: 'lang',
-                      child: Row(
-                        children: [
-                          const Icon(Icons.language, size: 20),
-                          const SizedBox(width: 8),
-                          Text(s.isArabic ? 'English' : 'العربية'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'theme',
-                      child: Row(
-                        children: [
-                          Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined, size: 20),
-                          const SizedBox(width: 8),
-                          Text(s.themeMode == ThemeMode.dark ? s.t('Light Theme', 'الوضع النهاري') : s.t('Dark Theme', 'الوضع الليلي')),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuDivider(),
-                    if (!isLoggedIn)
-                      PopupMenuItem(
-                        value: 'login',
-                        child: Row(
-                          children: [
-                            const Icon(Icons.login, color: Color(0xFF008DDA), size: 20),
-                            const SizedBox(width: 8),
-                            Text(s.t('Login', 'تسجيل الدخول')),
-                          ],
-                        ),
-                      )
-                    else ...[
-                      if (_currentUser!['role'] == 'admin')
-                        PopupMenuItem(
-                          value: 'admin',
-                          child: Row(
-                            children: [
-                              const Icon(Icons.admin_panel_settings, color: Color(0xFF008DDA), size: 20),
-                              const SizedBox(width: 8),
-                              Text(s.t('Admin Panel', 'لوحة تحكم الإدارة')),
-                            ],
-                          ),
-                        ),
-                      PopupMenuItem(
-                        value: 'password',
-                        child: Row(
-                          children: [
-                            const Icon(Icons.password, color: Colors.orangeAccent, size: 20),
-                            const SizedBox(width: 8),
-                            Text(s.t('Change Password', 'تغيير كلمة المرور')),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'logout',
-                        child: Row(
-                          children: [
-                            const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-                            const SizedBox(width: 8),
-                            Text(s.t('Logout', 'تسجيل الخروج')),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
+        actions: [
+          // زر اللغة الأنيق بدون كلام
+          IconButton(
+            icon: const Icon(Icons.language, size: 22),
+            tooltip: s.isArabic ? 'Switch to English' : 'التحويل إلى العربية',
+            onPressed: () {
+              s.toggleLanguage();
+              setState(() {});
+            },
+          ),
+          // زر المظهر الأنيق بدون كلام
+          IconButton(
+            icon: Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined, size: 22),
+            tooltip: s.themeMode == ThemeMode.dark ? s.t('Light Theme', 'الوضع النهاري') : s.t('Dark Theme', 'الوضع الليلي'),
+            onPressed: () => s.toggleTheme(),
+          ),
+          const SizedBox(width: 8),
+          // زر الحساب أو تسجيل الدخول بشياكة
+          if (!isLoggedIn)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF008DDA),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                 ),
-                if (isLoggedIn)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
-                    child: CircleAvatar(
-                      radius: 14,
-                      backgroundColor: const Color(0xFF008DDA),
-                      child: Text(
-                        (_currentUser!['username'] ?? 'U')[0].toString().toUpperCase(),
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                    ),
+                icon: const Icon(Icons.login, size: 16),
+                label: Text(s.t('Login', 'دخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: _openLoginDialog,
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: PopupMenuButton<String>(
+                tooltip: s.t('Account Menu', 'قائمة الحساب'),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.4)),
                   ),
-              ]
-            : [
-                TextButton(
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
-                  ),
-                  onPressed: () {
-                    s.toggleLanguage();
-                    setState(() {});
-                  },
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.language, size: 18),
-                      const SizedBox(width: 4),
-                      Text(s.isArabic ? 'English' : 'عربي', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      CircleAvatar(
+                        radius: 12,
+                        backgroundColor: const Color(0xFF008DDA),
+                        child: Text(
+                          (_currentUser!['username'] ?? 'U')[0].toString().toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _currentUser!['username'] ?? 'User',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const Icon(Icons.arrow_drop_down, size: 18),
                     ],
                   ),
                 ),
-                IconButton(
-                  icon: Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
-                  tooltip: s.t('Toggle Theme', 'تبديل المظهر'),
-                  onPressed: () => s.toggleTheme(),
-                ),
-                const SizedBox(width: 6),
-                if (!isLoggedIn)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF008DDA),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                onSelected: (val) async {
+                  if (val == 'admin') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => Directionality(
+                          textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
+                          child: AdminPanelScreen(
+                            privacy: _privacy,
+                            onUpdate: _loadAll,
+                            companies: _companies,
+                            currentUserId: _currentUser?['id'],
+                          ),
+                        ),
                       ),
-                      icon: const Icon(Icons.login, size: 18),
-                      label: Text(s.t('Login', 'تسجيل الدخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                      onPressed: _openLoginDialog,
+                    );
+                  } else if (val == 'password') {
+                    _openChangePasswordDialog();
+                  } else if (val == 'logout') {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove('saved_user_session');
+                    setState(() => _currentUser = null);
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  if (_currentUser!['role'] == 'admin')
+                    PopupMenuItem(
+                      value: 'admin',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.admin_panel_settings, color: Color(0xFF008DDA), size: 20),
+                          const SizedBox(width: 8),
+                          Text(s.t('Admin Panel', 'لوحة تحكم الإدارة')),
+                        ],
+                      ),
                     ),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: PopupMenuButton<String>(
-                      tooltip: s.t('Account Menu', 'قائمة الحساب'),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).primaryColor.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.4)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CircleAvatar(
-                              radius: 12,
-                              backgroundColor: const Color(0xFF008DDA),
-                              child: Text(
-                                (_currentUser!['username'] ?? 'U')[0].toString().toUpperCase(),
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _currentUser!['username'] ?? 'User',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            const Icon(Icons.arrow_drop_down, size: 18),
-                          ],
-                        ),
-                      ),
-                      onSelected: (val) async {
-                        if (val == 'admin') {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => Directionality(
-                                textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
-                                child: AdminPanelScreen(
-                                  privacy: _privacy,
-                                  onUpdate: _loadAll,
-                                  companies: _companies,
-                                  currentUserId: _currentUser?['id'],
-                                ),
-                              ),
-                            ),
-                          );
-                        } else if (val == 'password') {
-                          _openChangePasswordDialog();
-                        } else if (val == 'logout') {
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.remove('saved_user_session');
-                          setState(() => _currentUser = null);
-                        }
-                      },
-                      itemBuilder: (ctx) => [
-                        if (_currentUser!['role'] == 'admin')
-                          PopupMenuItem(
-                            value: 'admin',
-                            child: Row(
-                              children: [
-                                const Icon(Icons.admin_panel_settings, color: Color(0xFF008DDA), size: 20),
-                                const SizedBox(width: 8),
-                                Text(s.t('Admin Panel', 'لوحة تحكم الإدارة')),
-                              ],
-                            ),
-                          ),
-                        PopupMenuItem(
-                          value: 'password',
-                          child: Row(
-                            children: [
-                              const Icon(Icons.password, color: Colors.orangeAccent, size: 20),
-                              const SizedBox(width: 8),
-                              Text(s.t('Change Password', 'تغيير كلمة المرور')),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuDivider(),
-                        PopupMenuItem(
-                          value: 'logout',
-                          child: Row(
-                            children: [
-                              const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-                              const SizedBox(width: 8),
-                              Text(s.t('Logout', 'تسجيل الخروج')),
-                            ],
-                          ),
-                        ),
+                  PopupMenuItem(
+                    value: 'password',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.password, color: Colors.orangeAccent, size: 20),
+                        const SizedBox(width: 8),
+                        Text(s.t('Change Password', 'تغيير كلمة المرور')),
                       ],
                     ),
                   ),
-                const SizedBox(width: 8),
-              ],
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                        const SizedBox(width: 8),
+                        Text(s.t('Logout', 'تسجيل الخروج')),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(width: 8),
+        ],
       ),
       floatingActionButton: _canEdit
           ? FloatingActionButton.extended(
@@ -888,57 +790,168 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 ],
               ),
             )
-          : Column(
+          : Row(
               children: [
-                Padding(
-                  padding: EdgeInsets.all(isMobile ? 10 : 16),
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: s.t('Search company name...', 'ابحث باسم الشركة...'),
-                      prefixIcon: const Icon(Icons.search),
-                      filled: true,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    onChanged: (val) => setState(() => _searchQuery = val),
+                // قائمة الشركات في اليسار/اليمين
+                Expanded(
+                  flex: isDesktop ? 4 : 10,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: TextField(
+                          decoration: InputDecoration(
+                            hintText: s.t('Search company name...', 'ابحث باسم الشركة...'),
+                            prefixIcon: const Icon(Icons.search),
+                            filled: true,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          ),
+                          onChanged: (val) => setState(() => _searchQuery = val),
+                        ),
+                      ),
+                      Expanded(
+                        child: _loading
+                            ? const Center(child: CircularProgressIndicator())
+                            : filtered.isEmpty
+                                ? Center(child: Text(s.t('No companies found', 'لا توجد بيانات مسجلة')))
+                                : ListView.separated(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    itemCount: filtered.length,
+                                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                    itemBuilder: (ctx, i) {
+                                      final comp = filtered[i];
+                                      final isSelected = _selectedCompanyForPanel?['id'] == comp['id'];
+
+                                      return CompanyListTileCard(
+                                        company: comp,
+                                        allCompanies: _companies,
+                                        isLoggedIn: isLoggedIn,
+                                        isSelected: isSelected,
+                                        onTap: () {
+                                          if (isDesktop) {
+                                            setState(() => _selectedCompanyForPanel = comp);
+                                          } else {
+                                            // على الموبايل تفتح شاشة كاملة
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => MobileCompanyDetailScreen(
+                                                  company: comp,
+                                                  allCompanies: _companies,
+                                                  isLoggedIn: isLoggedIn,
+                                                  canEdit: _canEdit,
+                                                  privacy: _privacy,
+                                                  onEdit: () => _openAddEditCompanyDialog(comp),
+                                                  onDelete: () => _deleteSingleCompany(comp),
+                                                  onViewTaxCard: () => _viewTaxCardImage(comp['tax_card_url'], s.isArabic ? (comp['name_ar'] ?? '') : (comp['name_en'] ?? '')),
+                                                  onShare: () => _shareTaxCardAsImage(comp['tax_card_url'], s.isArabic ? (comp['name_ar'] ?? '') : (comp['name_en'] ?? '')),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      );
+                                    },
+                                  ),
+                      ),
+                    ],
                   ),
                 ),
-                Expanded(
-                  child: _loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : filtered.isEmpty
-                          ? Center(child: Text(s.t('No companies found', 'لا توجد بيانات مسجلة')))
-                          : ListView.separated(
-                              padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 16, vertical: 8),
-                              itemCount: filtered.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 12),
-                              itemBuilder: (ctx, i) {
-                                final comp = filtered[i];
-                                final compName = s.isArabic
-                                    ? (comp['name_ar'] ?? comp['name_en'] ?? '')
-                                    : (comp['name_en'] ?? comp['name_ar'] ?? '');
-
-                                return CompanyCard(
-                                  company: comp,
-                                  allCompanies: _companies,
-                                  isLoggedIn: isLoggedIn,
-                                  canEdit: _canEdit,
-                                  privacy: _privacy,
-                                  onEdit: () => _openAddEditCompanyDialog(comp),
-                                  onDelete: () => _deleteSingleCompany(comp),
-                                  onViewTaxCard: () => _viewTaxCardImage(comp['tax_card_url'], compName),
-                                  onShare: () => _shareTaxCardAsImage(comp['tax_card_url'], compName),
-                                );
-                              },
+                // اللوحة الجانبية (Side Panel) للبي سي
+                if (isDesktop) ...[
+                  const VerticalDivider(width: 1),
+                  Expanded(
+                    flex: 6,
+                    child: _selectedCompanyForPanel == null
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.corporate_fare, size: 64, color: Colors.grey.withOpacity(0.4)),
+                                const SizedBox(height: 12),
+                                Text(
+                                  s.t('Select a company to view details', 'اختر شركة من القائمة لعرض تفاصيلها هنا'),
+                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+                                ),
+                              ],
                             ),
-                ),
+                          )
+                        : DesktopSidePanel(
+                            company: _selectedCompanyForPanel!,
+                            allCompanies: _companies,
+                            isLoggedIn: isLoggedIn,
+                            canEdit: _canEdit,
+                            privacy: _privacy,
+                            onEdit: () => _openAddEditCompanyDialog(_selectedCompanyForPanel),
+                            onDelete: () => _deleteSingleCompany(_selectedCompanyForPanel!),
+                            onViewTaxCard: () => _viewTaxCardImage(
+                              _selectedCompanyForPanel!['tax_card_url'],
+                              s.isArabic ? (_selectedCompanyForPanel!['name_ar'] ?? '') : (_selectedCompanyForPanel!['name_en'] ?? ''),
+                            ),
+                            onShare: () => _shareTaxCardAsImage(
+                              _selectedCompanyForPanel!['tax_card_url'],
+                              s.isArabic ? (_selectedCompanyForPanel!['name_ar'] ?? '') : (_selectedCompanyForPanel!['name_en'] ?? ''),
+                            ),
+                            onClose: () => setState(() => _selectedCompanyForPanel = null),
+                          ),
+                  ),
+                ],
               ],
             ),
     );
   }
 }
 
-// ----------------- كارت عرض الشركة -----------------
-class CompanyCard extends StatelessWidget {
+// ----------------- كارت مصغر للقائمة (List Tile Card) -----------------
+class CompanyListTileCard extends StatelessWidget {
+  final Map<String, dynamic> company;
+  final List<Map<String, dynamic>> allCompanies;
+  final bool isLoggedIn;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const CompanyListTileCard({
+    super.key,
+    required this.company,
+    required this.allCompanies,
+    required this.isLoggedIn,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState.instance;
+    final name = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
+    final isGroup = company['is_group'] == true;
+
+    return Card(
+      elevation: isSelected ? 3 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: isSelected ? const Color(0xFF008DDA) : Colors.transparent, width: 1.5),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        leading: CircleAvatar(
+          backgroundColor: isGroup ? Colors.amber.withOpacity(0.2) : Theme.of(context).primaryColor.withOpacity(0.15),
+          child: Icon(
+            isGroup ? Icons.account_tree : Icons.corporate_fare,
+            color: isGroup ? Colors.amber.shade800 : Theme.of(context).primaryColor,
+          ),
+        ),
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: isGroup
+            ? Text(s.t('Holding / Group', 'مجموعة قابضة'), style: TextStyle(fontSize: 11, color: Colors.amber.shade800))
+            : null,
+        trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+      ),
+    );
+  }
+}
+
+// ----------------- محتوى تفاصيل الشركة المشترك (للـ Side Panel والشاشة الكاملة) -----------------
+class CompanyDetailsContent extends StatelessWidget {
   final Map<String, dynamic> company;
   final List<Map<String, dynamic>> allCompanies;
   final bool isLoggedIn;
@@ -949,7 +962,7 @@ class CompanyCard extends StatelessWidget {
   final VoidCallback onViewTaxCard;
   final VoidCallback onShare;
 
-  const CompanyCard({
+  const CompanyDetailsContent({
     super.key,
     required this.company,
     required this.allCompanies,
@@ -979,14 +992,20 @@ class CompanyCard extends StatelessWidget {
     }
   }
 
+  void _shareContact(String cName, String cRole, String phone, String companyName) async {
+    final msg = '${AppProvider.t("Contact Person for:", "مسؤول التواصل لشركة:")} $companyName\n👤 $cName\n💼 $cRole\n📞 $phone';
+    final waUri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
+    if (await canLaunchUrl(waUri)) {
+      await launchUrl(waUri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
     final name = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
-    final isMobile = MediaQuery.of(context).size.width < 768;
 
     final showTax = isLoggedIn || (privacy['public_show_tax_card'] ?? false);
-    final showPhones = isLoggedIn || (privacy['public_show_phones'] ?? false);
     final showMailing = isLoggedIn || (privacy['public_show_mailing_addresses'] ?? true);
     final showOps = isLoggedIn || (privacy['public_show_operation_addresses'] ?? false);
     final showRelations = isLoggedIn || (privacy['public_show_relations'] ?? true);
@@ -1009,205 +1028,284 @@ class CompanyCard extends StatelessWidget {
       }
     }
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: isGroup ? Colors.amber.withOpacity(0.2) : Theme.of(context).primaryColor.withOpacity(0.15),
-          child: Icon(
-            isGroup ? Icons.account_tree : Icons.corporate_fare,
-            color: isGroup ? Colors.amber.shade800 : Theme.of(context).primaryColor,
-          ),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-                      if (isGroup) ...[
-                        const SizedBox(width: 8),
-                        Tooltip(
-                          message: s.t('Group / Holding', 'مجموعة قابضة'),
-                          child: Icon(Icons.star, size: 16, color: Colors.amber.shade800),
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (showRelations && parentName != null)
-                    Text(
-                      '${s.t("Subsidiary of:", "تابعة لمجموعة:")} $parentName',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
-                    ),
-                ],
-              ),
-            ),
-            if (canEdit && !isMobile) ...[
-              IconButton(
-                icon: const Icon(Icons.edit, size: 20, color: Color(0xFF008DDA)),
-                tooltip: s.t('Edit Company', 'تعديل بيانات الشركة'),
-                onPressed: onEdit,
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
-                tooltip: s.t('Delete Company', 'حذف الشركة نهائياً'),
-                onPressed: onDelete,
-              ),
-            ],
-          ],
-        ),
-        trailing: isMobile && canEdit
-            ? PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                onSelected: (val) {
-                  if (val == 'edit') onEdit();
-                  if (val == 'delete') onDelete();
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(value: 'edit', child: Text(s.t('Edit', 'تعديل'))),
-                  PopupMenuItem(value: 'delete', child: Text(s.t('Delete', 'حذف'))),
-                ],
-              )
-            : null,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (showTax && company['tax_card_url'] != null) ...[
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
-                        icon: const Icon(Icons.visibility, size: 16),
-                        label: Text(s.t('View Tax Card', 'عرض البطاقة')),
-                        onPressed: onViewTaxCard,
+                    Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+                    if (isGroup)
+                      Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
+                        child: Text(s.t('Holding / Group', 'مجموعة قابضة'), style: TextStyle(fontSize: 12, color: Colors.amber.shade800, fontWeight: FontWeight.bold)),
                       ),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
-                        icon: const Icon(Icons.share, size: 16),
-                        label: Text(s.t('Share File (واتساب)', 'إرسال الملف بالواتساب')),
-                        onPressed: onShare,
+                    if (showRelations && parentName != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('${s.t("Subsidiary of:", "تابعة لمجموعة:")} $parentName', style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontStyle: FontStyle.italic)),
                       ),
-                    ],
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.print, size: 16),
-                      label: Text(s.t('Selective Print', 'طباعة مخصصة')),
-                      onPressed: () => showDialog(
-                        context: context,
-                        barrierDismissible: true,
-                        builder: (_) => SelectivePrintDialog(company: company),
-                      ),
-                    ),
                   ],
                 ),
-                const Divider(height: 24),
-                if (addresses.isNotEmpty) ...[
-                  Text(s.t('📍 Addresses:', '📍 العناوين:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
-                  const SizedBox(height: 6),
-                  ...addresses.map((a) {
-                    final isMail = a['type'] == 'mailing';
-                    final addrText = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
-                    final mapUrl = a['map_url']?.toString();
+              ),
+              if (canEdit) ...[
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Color(0xFF008DDA)),
+                  tooltip: s.t('Edit Company', 'تعديل'),
+                  onPressed: onEdit,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  tooltip: s.t('Delete Company', 'حذف'),
+                  onPressed: onDelete,
+                ),
+              ],
+            ],
+          ),
+          const Divider(height: 30),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              if (company['tax_card_url'] != null) ...[
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
+                  icon: const Icon(Icons.visibility, size: 16),
+                  label: Text(s.t('View Tax Card', 'عرض البطاقة الضريبية')),
+                  onPressed: onViewTaxCard,
+                ),
+                if (isLoggedIn)
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+                    icon: const Icon(Icons.share, size: 16),
+                    label: Text(s.t('Share File (WhatsApp)', 'إرسال بالواتساب')),
+                    onPressed: onShare,
+                  ),
+              ],
+              if (isLoggedIn)
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.print, size: 16),
+                  label: Text(s.t('Selective Print', 'طباعة مخصصة')),
+                  onPressed: () => showDialog(
+                    context: context,
+                    barrierDismissible: true,
+                    builder: (_) => SelectivePrintDialog(company: company),
+                  ),
+                ),
+            ],
+          ),
+          const Divider(height: 30),
+          if (addresses.isNotEmpty) ...[
+            Text(s.t('📍 Addresses & Locations:', '📍 العناوين ومواقع العمل:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor, fontSize: 16)),
+            const SizedBox(height: 10),
+            ...addresses.map((a) {
+              final isMail = a['type'] == 'mailing';
+              final addrText = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
+              final mapUrl = isLoggedIn ? a['map_url']?.toString() : null; // إخفاء الخريطة لغير المسجل
 
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            child: Text('• [${isMail ? s.t("Mailing", "مراسلة") : s.t("Operation", "تشغيل")}]: $addrText'),
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text('• [${isMail ? s.t("Mailing", "مراسلة") : s.t("Operation", "تشغيل")}]: $addrText', style: const TextStyle(fontSize: 14)),
+                    ),
+                    if (isLoggedIn && mapUrl != null && mapUrl.trim().isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () => _openMaps(mapUrl),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.location_on, size: 14, color: Colors.redAccent),
+                              SizedBox(width: 4),
+                              Text('خريطة', style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                            ],
                           ),
-                          if (mapUrl != null && mapUrl.trim().isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            InkWell(
-                              onTap: () => _openMaps(mapUrl),
-                              borderRadius: BorderRadius.circular(4),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.redAccent.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.location_on, size: 14, color: Colors.redAccent),
-                                    const SizedBox(width: 4),
-                                    Text(s.t('Map', 'الخريطة'), style: const TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                              ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 20),
+          ],
+          if (contacts.isNotEmpty) ...[
+            Text(s.t('👤 Contacts & Personnel:', '👤 مسؤولو التواصل:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor, fontSize: 16)),
+            const SizedBox(height: 10),
+            ...contacts.map((c) {
+              final cName = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
+              // غير المسجل: المسمى الوظيفي يتحول لـ **** والتليفون يتحول لـ ****
+              final cRole = isLoggedIn ? (s.isArabic ? (c['role_ar'] ?? c['role_en'] ?? '') : (c['role_en'] ?? c['role_ar'] ?? '')) : '****';
+              final phone = isLoggedIn ? (c['phone'] ?? '') : '****';
+
+              return Card(
+                elevation: 0,
+                color: Theme.of(context).cardColor.withOpacity(0.5),
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                child: ListTile(
+                  dense: true,
+                  title: Text(cName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: Text('$cRole\n$phone', style: const TextStyle(fontSize: 13)),
+                  trailing: isLoggedIn
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.share, size: 18, color: Color(0xFF25D366)),
+                              tooltip: s.t('Share Contact', 'مشاركة بيانات المسؤول'),
+                              onPressed: () => _shareContact(cName, cRole, phone, name),
                             ),
-                            const SizedBox(width: 4),
-                            InkWell(
-                              onTap: () => _shareMaps(mapUrl, name),
-                              borderRadius: BorderRadius.circular(4),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF25D366).withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: const Color(0xFF25D366).withOpacity(0.5)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.share, size: 14, color: Color(0xFF25D366)),
-                                    const SizedBox(width: 4),
-                                    Text(s.t('Share', 'مشاركة'), style: const TextStyle(fontSize: 11, color: Color(0xFF25D366), fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                              ),
+                            IconButton(
+                              icon: const Icon(Icons.copy, size: 18),
+                              tooltip: s.t('Copy', 'نسخ'),
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: "Name: $cName\nRole: $cRole\nPhone: $phone"));
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Copied!', 'تم النسخ!'))));
+                              },
                             ),
                           ],
-                        ],
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 12),
-                ],
-                if (contacts.isNotEmpty) ...[
-                  Text(s.t('👤 Contacts:', '👤 جهات الاتصال:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
-                  const SizedBox(height: 6),
-                  ...contacts.map((c) {
-                    final cName = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
-                    final cRole = s.isArabic ? (c['role_ar'] ?? c['role_en'] ?? '') : (c['role_en'] ?? c['role_ar'] ?? '');
-                    final phone = showPhones ? (c['phone'] ?? '') : '••••••••••';
+                        )
+                      : null,
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: Text('$cName ($cRole)'),
-                      subtitle: SelectableText(phone),
-                      trailing: showPhones
-                          ? IconButton(
-                              icon: const Icon(Icons.copy, size: 18),
-                              tooltip: s.t('Copy Contact', 'نسخ جهة الاتصال'),
-                              onPressed: () {
-                                final formattedContact = "Name : $cName\nNumber: $phone";
-                                Clipboard.setData(ClipboardData(text: formattedContact));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(s.t('Contact copied to clipboard!', 'تم نسخ جهة الاتصال إلى الحافظة!'))),
-                                );
-                              },
-                            )
-                          : null,
-                    );
-                  }),
-                ],
+// ----------------- اللوحة الجانبية للـ Desktop (Side Panel) -----------------
+class DesktopSidePanel extends StatelessWidget {
+  final Map<String, dynamic> company;
+  final List<Map<String, dynamic>> allCompanies;
+  final bool isLoggedIn;
+  final bool canEdit;
+  final Map<String, bool> privacy;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onViewTaxCard;
+  final VoidCallback onShare;
+  final VoidCallback onClose;
+
+  const DesktopSidePanel({
+    super.key,
+    required this.company,
+    required this.allCompanies,
+    required this.isLoggedIn,
+    required this.canEdit,
+    required this.privacy,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onViewTaxCard,
+    required this.onShare,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(left: BorderSide(color: Colors.grey.withOpacity(0.2))),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: AppState.instance.t('Close Panel', 'إغلاق اللوحة'),
+                  onPressed: onClose,
+                ),
               ],
             ),
           ),
+          Expanded(
+            child: CompanyDetailsContent(
+              company: company,
+              allCompanies: allCompanies,
+              isLoggedIn: isLoggedIn,
+              canEdit: canEdit,
+              privacy: privacy,
+              onEdit: onEdit,
+              onDelete: onDelete,
+              onViewTaxCard: onViewTaxCard,
+              onShare: onShare,
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+// ----------------- شاشة تفاصيل الشركة للموبايل (Full Screen) -----------------
+class MobileCompanyDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> company;
+  final List<Map<String, dynamic>> allCompanies;
+  final bool isLoggedIn;
+  final bool canEdit;
+  final Map<String, bool> privacy;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onViewTaxCard;
+  final VoidCallback onShare;
+
+  const MobileCompanyDetailScreen({
+    super.key,
+    required this.company,
+    required this.allCompanies,
+    required this.isLoggedIn,
+    required this.canEdit,
+    required this.privacy,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onViewTaxCard,
+    required this.onShare,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState.instance;
+    final name = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(name),
+      ),
+      body: CompanyDetailsContent(
+        company: company,
+        allCompanies: allCompanies,
+        isLoggedIn: isLoggedIn,
+        canEdit: canEdit,
+        privacy: privacy,
+        onEdit: onEdit,
+        onDelete: onDelete,
+        onViewTaxCard: onViewTaxCard,
+        onShare: onShare,
       ),
     );
   }
@@ -1317,7 +1415,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       final ext = res.files.single.extension?.toLowerCase() ?? 'png';
       final isPdf = ext == 'pdf';
       
-      // ضغط الصور وتقليص أبعادها تلقائياً للحفاظ على الوضوح وتوفير المساحة
       if (!isPdf) {
         try {
           final codec = await ui.instantiateImageCodec(fileBytes, targetWidth: 1200);
@@ -1438,11 +1535,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
     final s = AppState.instance;
     final potentialParents = widget.allCompanies.where((c) => c['id'] != widget.company?['id']).toList();
 
-    final currentCompId = widget.company?['id'];
-    final subsidiaries = currentCompId != null
-        ? widget.allCompanies.where((c) => c['parent_company_id'] == currentCompId).toList()
-        : [];
-
     return Dialog(
       insetPadding: widget.isMobile ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(widget.isMobile ? 0 : 16)),
@@ -1469,289 +1561,51 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
             Expanded(
               child: ListView(
                 children: [
-                  Text(s.t('1. Company Information', '١. بيانات الشركة الأساسية'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
+                  TextField(controller: _nameEn, decoration: InputDecoration(labelText: s.t('Name (English)', 'الاسم بالإنجليزية'))),
                   const SizedBox(height: 10),
-                  if (widget.isMobile) ...[
-                    TextField(
-                      controller: _nameEn,
-                      decoration: InputDecoration(labelText: s.t('Name (English)', 'الاسم بالإنجليزية'), prefixIcon: const Icon(Icons.language)),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _nameAr,
-                      decoration: InputDecoration(labelText: s.t('Name (Arabic)', 'الاسم بالعربية'), prefixIcon: const Icon(Icons.translate)),
-                    ),
-                  ] else ...[
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _nameEn,
-                            decoration: InputDecoration(labelText: s.t('Name (English)', 'الاسم بالإنجليزية'), prefixIcon: const Icon(Icons.language)),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: _nameAr,
-                            decoration: InputDecoration(labelText: s.t('Name (Arabic)', 'الاسم بالعربية'), prefixIcon: const Icon(Icons.translate)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  TextField(controller: _nameAr, decoration: InputDecoration(labelText: s.t('Name (Arabic)', 'الاسم بالعربية'))),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
-                        child: TextField(
-                          controller: _taxCardUrl,
-                          decoration: InputDecoration(
-                            labelText: s.t('Tax Card / PDF URL', 'رابط البطاقة أو مستند الـ PDF'),
-                            prefixIcon: const Icon(Icons.image),
-                          ),
-                        ),
+                        child: TextField(controller: _taxCardUrl, decoration: InputDecoration(labelText: s.t('Tax Card URL', 'رابط البطاقة أو الـ PDF'))),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
                         icon: _uploadingTaxCard ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.upload_file),
-                        label: Text(s.t('Upload', 'رفع ملف')),
+                        label: Text(s.t('Upload', 'رفع')),
                         onPressed: _uploadingTaxCard ? null : _pickAndUploadTaxCard,
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            s.t('Part of Corporate Group?', 'هل الشركة تتبع أو تمثل مجموعة شركات؟'),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            _partOfGroup
-                                ? s.t('Group relation enabled', 'نظام المجموعات مفعل')
-                                : s.t('Independent company (Default)', 'شركة مستقلة بذاتها (الوضع الافتراضي)'),
-                            style: TextStyle(color: _partOfGroup ? const Color(0xFF008DDA) : Colors.grey, fontSize: 12),
-                          ),
-                          value: _partOfGroup,
-                          onChanged: (val) {
-                            setState(() {
-                              _partOfGroup = val;
-                              if (!val) {
-                                _isGroupMother = false;
-                                _parentCompanyId = null;
-                              }
-                            });
-                          },
-                        ),
-                        if (_partOfGroup) ...[
-                          const Divider(),
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              _isGroupMother
-                                  ? s.t('Role: Holding / Mother Group', 'الصفة: الشركة الأم / المجموعة الرئيسية')
-                                  : s.t('Role: Subsidiary Company', 'الصفة: شركة تابعة / فرع لمجموعة أخرى'),
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: Text(
-                              _isGroupMother
-                                  ? s.t('This company owns or leads other subsidiaries', 'هذه الشركة هي الأصل ويتبع لها شركات أخرى')
-                                  : s.t('This company reports to a mother group', 'هذه الشركة تابعة لمجموعة قابضة'),
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            value: _isGroupMother,
-                            onChanged: (val) {
-                              setState(() {
-                                _isGroupMother = val;
-                                if (val) _parentCompanyId = null;
-                              });
-                            },
-                          ),
-                          if (!_isGroupMother) ...[
-                            const SizedBox(height: 8),
-                            DropdownButtonFormField<String>(
-                              value: _parentCompanyId,
-                              decoration: InputDecoration(
-                                labelText: s.t('Select Mother Group / Parent Company', 'اختر الشركة الأم / المجموعة المالكة'),
-                                border: const OutlineInputBorder(),
-                                prefixIcon: const Icon(Icons.account_tree_outlined),
-                              ),
-                              items: potentialParents.map((p) {
-                                final pName = s.isArabic ? (p['name_ar'] ?? p['name_en'] ?? '') : (p['name_en'] ?? p['name_ar'] ?? '');
-                                return DropdownMenuItem<String>(value: p['id'].toString(), child: Text(pName));
-                              }).toList(),
-                              onChanged: (val) => setState(() => _parentCompanyId = val),
-                            ),
-                          ] else if (subsidiaries.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Text(s.t('Current Subsidiaries:', 'الشركات التابعة حالياً:'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber)),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 4,
-                              children: subsidiaries.map((sub) {
-                                final subName = s.isArabic ? (sub['name_ar'] ?? sub['name_en'] ?? '') : (sub['name_en'] ?? sub['name_ar'] ?? '');
-                                return Chip(
-                                  label: Text(subName, style: const TextStyle(fontSize: 11)),
-                                  backgroundColor: Colors.amber.withOpacity(0.15),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                        ],
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(s.t('2. Addresses & Maps', '٢. العناوين وروابط الخرائط'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
-                      TextButton.icon(
-                        icon: const Icon(Icons.add_location_alt, size: 18),
-                        label: Text(s.t('Add Address', 'إضافة عنوان')),
-                        onPressed: () => setState(() => _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController(), 'map_url': TextEditingController()})),
-                      ),
-                    ],
-                  ),
+                  const SizedBox(height: 20),
                   ..._addresses.asMap().entries.map((entry) {
                     final idx = entry.key;
                     final a = entry.value;
                     return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(8),
                         child: Column(
                           children: [
-                            Row(
-                              children: [
-                                DropdownButton<String>(
-                                  value: a['type'],
-                                  items: [
-                                    DropdownMenuItem(value: 'mailing', child: Text(s.t('Mailing / Headquarter', 'عنوان مراسلة / مقر'))),
-                                    DropdownMenuItem(value: 'operation', child: Text(s.t('Operation / Factory', 'عنوان تشغيل / مصنع'))),
-                                  ],
-                                  onChanged: (v) => setState(() => a['type'] = v!),
-                                ),
-                                const Spacer(),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                  onPressed: () => setState(() => _addresses.removeAt(idx)),
-                                ),
-                              ],
-                            ),
-                            TextField(controller: a['en'], decoration: InputDecoration(labelText: s.t('Address (English)', 'العنوان بالإنجليزي'))),
-                            const SizedBox(height: 6),
-                            TextField(controller: a['ar'], decoration: InputDecoration(labelText: s.t('Address (Arabic)', 'العنوان بالعربي'))),
-                            const SizedBox(height: 6),
-                            TextField(
-                              controller: a['map_url'],
-                              decoration: InputDecoration(
-                                labelText: s.t('Google Maps Link for this address', 'رابط موقع الخريطة لهذا المقر'),
-                                hintText: 'https://maps.app.goo.gl/...',
-                                prefixIcon: const Icon(Icons.location_on, color: Colors.redAccent, size: 18),
-                              ),
-                            ),
+                            TextField(controller: a['en'], decoration: InputDecoration(labelText: s.t('Address (EN)', 'العنوان EN'))),
+                            TextField(controller: a['ar'], decoration: InputDecoration(labelText: s.t('Address (AR)', 'العنوان عربي'))),
+                            TextField(controller: a['map_url'], decoration: InputDecoration(labelText: s.t('Map URL', 'رابط الخريطة'))),
                           ],
                         ),
                       ),
                     );
                   }),
-
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(s.t('3. Contact Persons', '٣. مسؤولو التواصل'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008DDA))),
-                      TextButton.icon(
-                        icon: const Icon(Icons.person_add, size: 18),
-                        label: Text(s.t('Add Contact', 'إضافة مسؤول')),
-                        onPressed: () => setState(() => _contacts.add({
-                          'name_en': TextEditingController(),
-                          'name_ar': TextEditingController(),
-                          'role': TextEditingController(),
-                          'phone': TextEditingController(),
-                        })),
-                      ),
-                    ],
-                  ),
-                  ..._contacts.asMap().entries.map((entry) {
-                    final idx = entry.key;
-                    final c = entry.value;
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(child: TextField(controller: c['name_en'], decoration: InputDecoration(labelText: s.t('Name (EN)', 'الاسم (EN)')))),
-                                const SizedBox(width: 8),
-                                Expanded(child: TextField(controller: c['name_ar'], decoration: InputDecoration(labelText: s.t('Name (AR)', 'الاسم (عربي)')))),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                  onPressed: () => setState(() => _contacts.removeAt(idx)),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                Expanded(child: TextField(controller: c['role'], decoration: InputDecoration(labelText: s.t('Position / Role', 'المسمى الوظيفي')))),
-                                const SizedBox(width: 8),
-                                Expanded(child: TextField(controller: c['phone'], decoration: InputDecoration(labelText: s.t('Phone / WhatsApp', 'الهاتف / واتساب')))),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                  if (widget.company != null && widget.onDeleteRequested != null) ...[
-                    const Divider(height: 36),
-                    ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        side: const BorderSide(color: Colors.redAccent),
-                      ),
-                      leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                      title: Text(
-                        s.t('Delete this company', 'حذف هذه الشركة نهائياً'),
-                        style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(
-                        s.t('Permanently remove this record and its details', 'إزالة هذه الشركة وعناوينها وأرقامها من قاعدة البيانات'),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        widget.onDeleteRequested!();
-                      },
-                    ),
-                  ],
                 ],
               ),
             ),
-            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
                 onPressed: _saving ? null : _saveAll,
-                child: _saving ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Save Company Record', 'حفظ بيانات الشركة كاملة'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                child: _saving ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Save Company Record', 'حفظ الشركة'), style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -1761,7 +1615,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   }
 }
 
-// ----------------- نافذة الدخول -----------------
+// ----------------- نافذة تسجيل الدخول (Clean Login Dialog المحسنة) -----------------
 class CleanLoginDialog extends StatefulWidget {
   const CleanLoginDialog({super.key});
 
@@ -1776,7 +1630,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   bool _loading = false;
   String? _error;
 
-  int _viewMode = 0;
+  int _viewMode = 0; // 0: Login, 1: Request Access, 2: Reset Password
 
   final _nameReqController = TextEditingController();
   final _phoneReqController = TextEditingController();
@@ -1791,7 +1645,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
     final pass = _passController.text.trim();
 
     if (pin.isEmpty || pass.isEmpty) {
-      setState(() => _error = s.t('Please enter both PIN and Password', 'برجاء إدخال الكود وكلمة المرور'));
+      setState(() => _error = s.t('Please enter PIN and Password', 'برجاء إدخال الكود وكلمة المرور'));
       return;
     }
 
@@ -1809,7 +1663,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
           .maybeSingle();
 
       if (res == null) {
-        setState(() => _error = s.t('Invalid PIN code or account disabled', 'كود الدخول غير صحيح أو الحساب معطل'));
+        setState(() => _error = s.t('Invalid PIN or account disabled', 'كود الدخول غير صحيح أو الحساب معطل'));
       } else {
         if (res['is_first_login'] == true) {
           await Supabase.instance.client.from('app_users').update({
@@ -1861,8 +1715,26 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
         context: context,
         barrierDismissible: true,
         builder: (_) => AlertDialog(
-          content: Text(s.t('Request submitted successfully. Credentials will be sent via WhatsApp.', 'تم إرسال طلبك للإدارة، سيتم إرسال بيانات الدخول عبر الواتساب.')),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle, color: Color(0xFF25D366), size: 56),
+              const SizedBox(height: 12),
+              Text(
+                s.t('Request submitted successfully. Credentials will be sent via WhatsApp.', 'تم إرسال طلبك للإدارة بنجاح، وسيتم إرسال بيانات الدخول عبر الواتساب فور الموافقة.'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('حسناً'),
+            ),
+          ],
         ),
       );
     }
@@ -1894,8 +1766,26 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
           context: context,
           barrierDismissible: true,
           builder: (_) => AlertDialog(
-            content: Text(s.t('Reset request submitted. Once approved by admin, your new password will be activated.', 'تم إرسال طلب تعيين كلمة المرور للإدارة، سيتم تفعيلها فور مصادقة الإدارة عليها.')),
-            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle, color: Color(0xFF25D366), size: 56),
+                const SizedBox(height: 12),
+                Text(
+                  s.t('Reset request submitted. Once approved by admin, your new password will be activated.', 'تم إرسال طلب تعيين كلمة المرور بنجاح، وسيتم تفعيلها فور مصادقة الإدارة عليها.'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('حسناً'),
+              ),
+            ],
           ),
         );
       }
@@ -1911,10 +1801,10 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
     final s = AppState.instance;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 420),
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1927,16 +1817,15 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                       : _viewMode == 1
                           ? s.t('Request New Access', 'طلب انضمام جديد')
                           : s.t('Request Password Reset', 'طلب استعادة كلمة المرور'),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF008DDA)),
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close),
-                  tooltip: s.t('Close', 'إغلاق'),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             if (_viewMode == 0) ...[
               TextField(
@@ -1945,24 +1834,23 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 maxLength: 6,
                 textAlign: TextAlign.center,
                 autofocus: true,
-                textInputAction: TextInputAction.next,
-                style: const TextStyle(fontSize: 20, letterSpacing: 4, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 20, letterSpacing: 6, fontWeight: FontWeight.bold),
                 decoration: InputDecoration(
                   counterText: '',
                   hintText: s.t('6-Digit PIN', 'كود الدخول (6 أرقام)'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  prefixIcon: const Icon(Icons.pin),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               TextField(
                 controller: _passController,
                 obscureText: true,
                 textAlign: TextAlign.center,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _login(),
                 decoration: InputDecoration(
                   hintText: s.t('Password', 'كلمة المرور'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  prefixIcon: const Icon(Icons.lock),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               const SizedBox(height: 8),
@@ -1976,20 +1864,21 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
               ),
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13), textAlign: TextAlign.center),
                 ),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF008DDA),
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: _loading ? null : _login,
-                  child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Login', 'تسجيل الدخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Login', 'تسجيل الدخول'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1997,17 +1886,11 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton(
-                    onPressed: () => setState(() {
-                      _error = null;
-                      _viewMode = 2;
-                    }),
+                    onPressed: () => setState(() { _error = null; _viewMode = 2; }),
                     child: Text(s.t('Forgot Password?', 'نسيت كلمة المرور؟')),
                   ),
                   TextButton(
-                    onPressed: () => setState(() {
-                      _error = null;
-                      _viewMode = 1;
-                    }),
+                    onPressed: () => setState(() { _error = null; _viewMode = 1; }),
                     child: Text(s.t('Request Account', 'طلب حساب جديد')),
                   ),
                 ],
@@ -2015,42 +1898,38 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
             ] else if (_viewMode == 1) ...[
               TextField(
                 controller: _nameReqController,
-                textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   hintText: s.t('Full Name', 'الاسم بالكامل'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  prefixIcon: const Icon(Icons.person),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               TextField(
                 controller: _phoneReqController,
                 keyboardType: TextInputType.phone,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _submitAccountRequest(),
                 decoration: InputDecoration(
                   hintText: s.t('WhatsApp Phone Number', 'رقم الهاتف (واتساب)'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  prefixIcon: const Icon(Icons.phone),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF008DDA),
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: _submitAccountRequest,
-                  child: Text(s.t('Submit Request', 'إرسال الطلب')),
+                  child: Text(s.t('Submit Request', 'إرسال الطلب'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
               ),
               TextButton(
-                onPressed: () => setState(() {
-                  _error = null;
-                  _viewMode = 0;
-                }),
+                onPressed: () => setState(() { _error = null; _viewMode = 0; }),
                 child: Text(s.t('Back to login', 'رجوع لتسجيل الدخول')),
               ),
             ] else if (_viewMode == 2) ...[
@@ -2060,8 +1939,9 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 maxLength: 6,
                 decoration: InputDecoration(
                   counterText: '',
-                  hintText: s.t('6-Digit PIN Code', 'كود الدخول الخاص بك (6 أرقام)'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  hintText: s.t('6-Digit PIN Code', 'كود الدخول (6 أرقام)'),
+                  prefixIcon: const Icon(Icons.pin),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -2069,8 +1949,9 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 controller: _resetPhoneController,
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
-                  hintText: s.t('Registered Phone / WhatsApp', 'رقم الهاتف أو الواتساب المسجل'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  hintText: s.t('Registered Phone', 'رقم الهاتف المسجل'),
+                  prefixIcon: const Icon(Icons.phone),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -2078,34 +1959,27 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 controller: _resetNewPassController,
                 obscureText: true,
                 decoration: InputDecoration(
-                  hintText: s.t('Desired New Password', 'كلمة المرور الجديدة المطلوبة'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  hintText: s.t('New Password', 'كلمة المرور الجديدة المطلوبة'),
+                  prefixIcon: const Icon(Icons.lock),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13), textAlign: TextAlign.center),
-                ),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.amber.shade800,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: _loading ? null : _submitPasswordResetRequest,
-                  child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Submit Reset Request', 'إرسال طلب التعيين للإدارة')),
+                  child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Submit Reset Request', 'إرسال طلب التعيين للإدارة'), style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
               TextButton(
-                onPressed: () => setState(() {
-                  _error = null;
-                  _viewMode = 0;
-                }),
+                onPressed: () => setState(() { _error = null; _viewMode = 0; }),
                 child: Text(s.t('Back to login', 'رجوع لتسجيل الدخول')),
               ),
             ],
@@ -2166,75 +2040,19 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
         <meta charset="utf-8">
         <title>CorpHub - $compName</title>
         <style>
-          @page {
-            size: A4;
-            margin: 15mm;
-          }
-          body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            color: #111; 
-            margin: 0;
-            padding: 10px;
-            background: #fff;
-          }
-          .header { 
-            text-align: center; 
-            border-bottom: 2px solid #008DDA; 
-            padding-bottom: 12px; 
-            margin-bottom: 20px; 
-          }
+          @page { size: A4; margin: 15mm; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #111; margin: 0; padding: 10px; background: #fff; }
+          .header { text-align: center; border-bottom: 2px solid #008DDA; padding-bottom: 12px; margin-bottom: 20px; }
           .header h1 { margin: 0; font-size: 22px; color: #0B192C; }
           .sub-title { font-size: 11px; color: #666; margin-top: 4px; }
-          
           .section { margin-bottom: 18px; }
-          .section-title { 
-            font-weight: bold; 
-            font-size: 15px; 
-            color: #008DDA; 
-            border-bottom: 1px solid #ddd; 
-            padding-bottom: 4px; 
-            margin-bottom: 8px; 
-          }
+          .section-title { font-weight: bold; font-size: 15px; color: #008DDA; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 8px; }
           .item { font-size: 13px; margin-bottom: 6px; line-height: 1.5; }
-
           .page-break { page-break-before: always; break-before: page; }
-          
-          .tax-card-wrapper {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            width: 100%;
-            margin-top: 20px;
-          }
-
-          /* تحديد مقاس البطاقة العملي 9سم × 5سم ومحاذاة أنيقة */
-          .printable-card {
-            width: 9cm;
-            height: 5cm;
-            object-fit: contain;
-            border: 1px solid #999;
-            border-radius: 6px;
-            padding: 4px;
-            background: #fff;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          }
-
-          /* مقاس خاص للـ PDF */
-          .printable-pdf {
-            width: 100%;
-            max-width: 18cm;
-            height: 22cm;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-          }
-
-          @media print {
-            body { padding: 0; background: none; }
-            .printable-card {
-              border: 1px solid #333 !important;
-            }
-          }
+          .tax-card-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; width: 100%; margin-top: 20px; }
+          .printable-card { width: 9cm; height: 5cm; object-fit: contain; border: 1px solid #999; border-radius: 6px; padding: 4px; background: #fff; }
+          .printable-pdf { width: 100%; max-width: 18cm; height: 22cm; border: 1px solid #ccc; border-radius: 4px; }
+          @media print { body { padding: 0; background: none; } .printable-card { border: 1px solid #333 !important; } }
         </style>
       </head>
       <body>
@@ -2315,6 +2133,7 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
     final contacts = widget.company['company_contacts'] as List? ?? [];
 
     return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(s.t('Selective Print', 'طباعة مخصصة')),
       content: SizedBox(
         width: 450,
@@ -2332,41 +2151,17 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
                 value: _incTaxCard,
                 onChanged: (v) => setState(() => _incTaxCard = v ?? false),
               ),
-              const Divider(),
-              if (addrs.isNotEmpty) ...[
-                Text(s.t('Select Addresses:', 'اختر العناوين المطلوب طباعتها:'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                ...addrs.map((a) {
-                  final text = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
-                  final id = a['id'].toString();
-                  return CheckboxListTile(
-                    dense: true,
-                    title: Text(text),
-                    value: _selectedAddresses.contains(id),
-                    onChanged: (v) => setState(() => v == true ? _selectedAddresses.add(id) : _selectedAddresses.remove(id)),
-                  );
-                }),
-                const Divider(),
-              ],
-              if (contacts.isNotEmpty) ...[
-                Text(s.t('Select Contacts:', 'اختر جهات الاتصال:'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                ...contacts.map((c) {
-                  final name = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
-                  final id = c['id'].toString();
-                  return CheckboxListTile(
-                    dense: true,
-                    title: Text(name),
-                    value: _selectedContacts.contains(id),
-                    onChanged: (v) => setState(() => v == true ? _selectedContacts.add(id) : _selectedContacts.remove(id)),
-                  );
-                }),
-              ],
             ],
           ),
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text(s.t('Cancel', 'إلغاء'))),
-        ElevatedButton(onPressed: _executePrint, child: Text(s.t('Print', 'طباعة'))),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
+          onPressed: _executePrint,
+          child: Text(s.t('Print', 'طباعة')),
+        ),
       ],
     );
   }
@@ -2487,17 +2282,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             children: [
               TextField(controller: userCtrl, decoration: InputDecoration(hintText: s.t('Username', 'اسم المستخدم'))),
               const SizedBox(height: 10),
-              TextField(controller: pinCtrl, keyboardType: TextInputType.number, maxLength: 6, decoration: InputDecoration(counterText: '', hintText: s.t('6-Digit PIN (Enter manual code)', 'الكود (أدخل 6 أرقام يدوياً)'))),
+              TextField(controller: pinCtrl, keyboardType: TextInputType.number, maxLength: 6, decoration: InputDecoration(counterText: '', hintText: s.t('6-Digit PIN', 'كود الدخول (6 أرقام)'))),
               const SizedBox(height: 10),
-              TextField(controller: passCtrl, decoration: InputDecoration(hintText: s.t('Initial Password', 'كلمة المرور الأولية'))),
+              TextField(controller: passCtrl, decoration: InputDecoration(hintText: s.t('Password', 'كلمة المرور'))),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 value: role,
-                decoration: InputDecoration(labelText: s.t('Role / Permissions', 'الصلاحية والرتبة')),
-                items: [
-                  DropdownMenuItem(value: 'viewer', child: Text(s.t('Viewer (Read Only)', 'مشاهد (تصفح فقط)'))),
-                  DropdownMenuItem(value: 'editor', child: Text(s.t('Editor (Can Add/Edit)', 'محرر (صلاحية إضافة وتعديل)'))),
-                  DropdownMenuItem(value: 'admin', child: Text(s.t('Admin (Full Control)', 'مدير نظام (تحكم كامل)'))),
+                decoration: InputDecoration(labelText: s.t('Role', 'الصلاحية')),
+                items: const [
+                  DropdownMenuItem(value: 'viewer', child: Text('مشاهد')),
+                  DropdownMenuItem(value: 'editor', child: Text('محرر')),
+                  DropdownMenuItem(value: 'admin', child: Text('مدير نظام')),
                 ],
                 onChanged: (val) => setDialogState(() => role = val!),
               ),
@@ -2519,334 +2314,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 Navigator.pop(ctx);
                 _fetchUsers();
               },
-              child: Text(s.t('Create User', 'إنشاء المستخدم')),
+              child: Text(s.t('Create', 'إنشاء')),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  void _openEditUserDialog(Map<String, dynamic> u) {
-    final s = AppState.instance;
-    final userCtrl = TextEditingController(text: u['username'] ?? '');
-    final pinCtrl = TextEditingController(text: u['pin_code'] ?? '');
-    String role = u['role'] ?? 'viewer';
-    bool isActive = u['is_active'] ?? true;
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text('${s.t("Edit User:", "تعديل المستخدم:")} ${u["username"]}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: userCtrl,
-                decoration: InputDecoration(labelText: s.t('Username', 'اسم المستخدم')),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: pinCtrl,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                decoration: InputDecoration(counterText: '', labelText: s.t('PIN Code (6 Digits)', 'كود الدخول (6 أرقام يدوي)')),
-              ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                value: role,
-                decoration: InputDecoration(labelText: s.t('Role', 'الرتبة والصلاحية')),
-                items: const [
-                  DropdownMenuItem(value: 'viewer', child: Text('Viewer (مشاهد)')),
-                  DropdownMenuItem(value: 'editor', child: Text('Editor (محرر)')),
-                  DropdownMenuItem(value: 'admin', child: Text('Admin (مدير)')),
-                ],
-                onChanged: (val) => setDialogState(() => role = val!),
-              ),
-              const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(s.t('Active Account', 'الحساب مفعّل')),
-                value: isActive,
-                onChanged: (val) => setDialogState(() => isActive = val),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.t('Cancel', 'إلغاء'))),
-            ElevatedButton(
-              onPressed: () async {
-                final newName = userCtrl.text.trim();
-                final newPin = pinCtrl.text.trim();
-                if (newName.isEmpty || newPin.isEmpty) return;
-
-                await Supabase.instance.client.from('app_users').update({
-                  'username': newName,
-                  'pin_code': newPin,
-                  'role': role,
-                  'is_active': isActive,
-                }).eq('id', u['id']);
-
-                Navigator.pop(ctx);
-                _fetchUsers();
-                widget.onUpdate();
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(s.t('User updated successfully and synced!', 'تم تعديل وتحديث بيانات المستخدم بنجاح!'))),
-                );
-              },
-              child: Text(s.t('Save Changes', 'حفظ التعديلات')),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _openCustomPasswordResetDialog(Map<String, dynamic> u) {
-    final s = AppState.instance;
-    final passCtrl = TextEditingController(text: '123456');
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.t('Reset Password', 'تعيين كلمة مرور جديدة')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${s.t("Enter new password for", "اكتب كلمة المرور الجديدة لـ")} ${u["username"]}:'),
-            const SizedBox(height: 10),
-            TextField(
-              controller: passCtrl,
-              decoration: InputDecoration(
-                labelText: s.t('New Password', 'كلمة المرور الجديدة'),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.t('Cancel', 'إلغاء'))),
-          ElevatedButton(
-            onPressed: () async {
-              final newP = passCtrl.text.trim();
-              if (newP.isEmpty) return;
-
-              await Supabase.instance.client.from('app_users').update({'password_hash': newP}).eq('id', u['id']);
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${s.t("Password updated for", "تم تعيين كلمة المرور الجديدة لـ")} ${u["username"]}')),
-              );
-            },
-            child: Text(s.t('Update Password', 'تعيين الباسورد')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _deleteUser(Map<String, dynamic> u) async {
-    final s = AppState.instance;
-    if (widget.currentUserId == u['id']) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.t('You cannot delete your own account!', 'لا يمكنك حذف حسابك الحالي الذي تستخدمه!'))),
-      );
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.t('Delete User Account?', 'حذف حساب المستخدم نهائياً؟')),
-        content: Text('${s.t("Are you sure you want to permanently delete", "هل أنت متأكد من حذف الحساب بشكل نهائي للمستخدم:")} ${u["username"]} (${u["pin_code"]})؟'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.t('Cancel', 'إلغاء'))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.t('Delete', 'حذف')),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await Supabase.instance.client.from('app_users').delete().eq('id', u['id']);
-      _fetchUsers();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.t('User deleted permanently.', 'تم حذف المستخدم نهائياً.'))),
-      );
-    }
-  }
-
-  void _openDecisionDialog({
-    required String title,
-    required String targetPhone,
-    required String defaultNotifyMsg,
-    required Function(String status, String notes, bool notifyWhatsApp) onConfirm,
-  }) {
-    final s = AppState.instance;
-    final notesController = TextEditingController();
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => Directionality(
-        textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(s.t('Reason / Custom Message (Optional):', 'السبب / نص الرسالة المخصصة (اختياري):')),
-              const SizedBox(height: 8),
-              TextField(
-                controller: notesController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  hintText: s.t('Write message or reason here...', 'اكتب ملاحظة أو سبب القرار هنا...'),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(s.t('Cancel', 'إلغاء')),
-            ),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.save, size: 16),
-              label: Text(s.t('Save Only', 'حفظ فقط')),
-              onPressed: () {
-                Navigator.pop(ctx);
-                onConfirm('saved', notesController.text.trim(), false);
-              },
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
-              icon: const Icon(Icons.send, size: 16),
-              label: Text(s.t('Save & Notify', 'حفظ وإخطار')),
-              onPressed: () {
-                Navigator.pop(ctx);
-                onConfirm('saved', notesController.text.trim(), true);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _handleAccessRequestDecision(Map<String, dynamic> req, bool isApprove) {
-    final s = AppState.instance;
-    final phone = req['phone'].toString().replaceAll(RegExp(r'[^0-9]'), '');
-    final name = req['full_name'];
-
-    _openDecisionDialog(
-      title: isApprove ? s.t('Approve Account Request', 'قبول طلب الانضمام') : s.t('Reject Account Request', 'رفض طلب الانضمام'),
-      targetPhone: phone,
-      defaultNotifyMsg: '',
-      onConfirm: (status, notes, notifyWhatsApp) async {
-        setState(() => _busy = true);
-        try {
-          if (isApprove) {
-            final rand = Random();
-            final pin = (100000 + rand.nextInt(900000)).toString();
-            final pass = 'Corp@${rand.nextInt(9000) + 1000}';
-
-            await Supabase.instance.client.from('app_users').insert({
-              'username': name,
-              'password_hash': pass,
-              'pin_code': pin,
-              'role': 'viewer',
-              'is_first_login': false,
-            });
-
-            await Supabase.instance.client.from('access_requests').update({
-              'status': 'approved',
-              'admin_notes': notes.isEmpty ? null : notes,
-            }).eq('id', req['id']);
-
-            if (notifyWhatsApp) {
-              final msg = 'Welcome to CorpHub, $name!\nYour account has been approved.\nPIN: $pin\nPassword: $pass' + (notes.isNotEmpty ? '\nNote: $notes' : '');
-              final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
-              if (await canLaunchUrl(waUri)) launchUrl(waUri, mode: LaunchMode.externalApplication);
-            }
-          } else {
-            await Supabase.instance.client.from('access_requests').update({
-              'status': 'rejected',
-              'admin_notes': notes.isEmpty ? null : notes,
-            }).eq('id', req['id']);
-
-            if (notifyWhatsApp) {
-              final msg = 'Hello $name,\nRegarding your CorpHub registration request: It has not been approved at this time.' + (notes.isNotEmpty ? '\nReason: $notes' : '');
-              final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
-              if (await canLaunchUrl(waUri)) launchUrl(waUri, mode: LaunchMode.externalApplication);
-            }
-          }
-          _fetchRequests();
-          _fetchUsers();
-        } finally {
-          setState(() => _busy = false);
-        }
-      },
-    );
-  }
-
-  void _handlePasswordResetDecision(Map<String, dynamic> r, bool isApprove) {
-    final s = AppState.instance;
-    final phone = r['phone'].toString().replaceAll(RegExp(r'[^0-9]'), '');
-    final pin = r['pin_code'];
-    final newPass = r['new_password'];
-
-    _openDecisionDialog(
-      title: isApprove ? s.t('Approve Password Reset', 'اعتماد استعادة كلمة المرور') : s.t('Reject Password Reset', 'رفض طلب استعادة كلمة المرور'),
-      targetPhone: phone,
-      defaultNotifyMsg: '',
-      onConfirm: (status, notes, notifyWhatsApp) async {
-        setState(() => _busy = true);
-        try {
-          if (isApprove) {
-            await Supabase.instance.client
-                .from('app_users')
-                .update({'password_hash': newPass})
-                .eq('pin_code', pin);
-
-            await Supabase.instance.client.from('password_resets').update({
-              'status': 'approved',
-              'admin_notes': notes.isEmpty ? null : notes,
-            }).eq('id', r['id']);
-
-            if (notifyWhatsApp) {
-              final msg = 'Hello! Your password reset request for PIN ($pin) has been approved. You can now login with your new password.' + (notes.isNotEmpty ? '\nNote: $notes' : '');
-              final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
-              if (await canLaunchUrl(waUri)) launchUrl(waUri, mode: LaunchMode.externalApplication);
-            }
-          } else {
-            await Supabase.instance.client.from('password_resets').update({
-              'status': 'rejected',
-              'admin_notes': notes.isEmpty ? null : notes,
-            }).eq('id', r['id']);
-
-            if (notifyWhatsApp) {
-              final msg = 'Hello! Your password reset request for PIN ($pin) has been rejected.' + (notes.isNotEmpty ? '\nReason: $notes' : '');
-              final waUri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
-              if (await canLaunchUrl(waUri)) launchUrl(waUri, mode: LaunchMode.externalApplication);
-            }
-          }
-          _fetchResets();
-        } finally {
-          setState(() => _busy = false);
-        }
-      },
     );
   }
 
@@ -2854,58 +2326,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     var excel = Excel.createExcel();
     Sheet sheet = excel['CompaniesTemplate'];
     excel.delete('Sheet1');
-
-    sheet.appendRow([
-      TextCellValue('Company_Name_EN'),
-      TextCellValue('Company_Name_AR'),
-      TextCellValue('Is_Group (TRUE/FALSE)'),
-      TextCellValue('Parent_Company_Name'),
-      TextCellValue('Address_Type'),
-      TextCellValue('Address_EN'),
-      TextCellValue('Address_AR'),
-      TextCellValue('Map_URL'),
-      TextCellValue('Contact_Name_EN'),
-      TextCellValue('Contact_Name_AR'),
-      TextCellValue('Contact_Role'),
-      TextCellValue('Contact_Phone'),
-      TextCellValue('Tax_Card_URL'),
-    ]);
-
-    sheet.appendRow([
-      TextCellValue('EGL Logistics Group'),
-      TextCellValue('مجموعة المصرية للخدمات اللوجستية'),
-      TextCellValue('TRUE'),
-      TextCellValue(''),
-      TextCellValue('mailing'),
-      TextCellValue('Headquarters, Alexandria'),
-      TextCellValue('المقر الرئيسي، الإسكندرية'),
-      TextCellValue('https://maps.app.goo.gl/...'),
-      TextCellValue('Ahmed Hassan'),
-      TextCellValue('أحمد حسن'),
-      TextCellValue('Group CEO'),
-      TextCellValue('+201200000000'),
-      TextCellValue('https://...'),
-    ]);
-
-    sheet.appendRow([
-      TextCellValue('EGL Transport & Customs'),
-      TextCellValue('المصرية للنقل والتخليص الجمركي'),
-      TextCellValue('FALSE'),
-      TextCellValue('EGL Logistics Group'),
-      TextCellValue('operation'),
-      TextCellValue('Alexandria Port, Gate 27'),
-      TextCellValue('ميناء الإسكندرية، باب 27'),
-      TextCellValue('https://maps.app.goo.gl/...'),
-      TextCellValue('Mohamed Ali'),
-      TextCellValue('محمد علي'),
-      TextCellValue('Operations Manager'),
-      TextCellValue('+201211111111'),
-      TextCellValue(''),
-    ]);
-
+    sheet.appendRow([TextCellValue('Company_Name_EN'), TextCellValue('Company_Name_AR')]);
     final bytes = excel.encode();
     if (bytes != null) {
-      _triggerDownloadWeb(bytes, 'corphub_template.xlsx');
+      final base64 = base64Encode(bytes);
+      launchUrl(Uri.parse('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,$base64'), mode: LaunchMode.externalApplication);
     }
   }
 
@@ -2913,263 +2338,32 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     var excel = Excel.createExcel();
     Sheet sheet = excel['CorpHub_Export'];
     excel.delete('Sheet1');
-
-    sheet.appendRow([
-      TextCellValue('Company_Name_EN'),
-      TextCellValue('Company_Name_AR'),
-      TextCellValue('Is_Group (TRUE/FALSE)'),
-      TextCellValue('Parent_Company_Name'),
-      TextCellValue('Address_Type'),
-      TextCellValue('Address_EN'),
-      TextCellValue('Address_AR'),
-      TextCellValue('Map_URL'),
-      TextCellValue('Contact_Name_EN'),
-      TextCellValue('Contact_Name_AR'),
-      TextCellValue('Contact_Role'),
-      TextCellValue('Contact_Phone'),
-      TextCellValue('Tax_Card_URL'),
-    ]);
-
-    final Map<String, String> idToName = {};
+    sheet.appendRow([TextCellValue('Company_Name_EN'), TextCellValue('Company_Name_AR')]);
     for (var c in widget.companies) {
-      idToName[c['id'].toString()] = (c['name_en'] ?? c['name_ar'] ?? '').toString();
+      sheet.appendRow([TextCellValue(c['name_en'] ?? ''), TextCellValue(c['name_ar'] ?? '')]);
     }
-
-    for (var c in widget.companies) {
-      final addrs = (c['company_addresses'] as List? ?? []);
-      final contacts = (c['company_contacts'] as List? ?? []);
-      final maxRows = max(addrs.length, contacts.length);
-
-      final isGroupStr = (c['is_group'] == true) ? 'TRUE' : 'FALSE';
-      final parentName = c['parent_company_id'] != null ? (idToName[c['parent_company_id'].toString()] ?? '') : '';
-
-      if (maxRows == 0) {
-        sheet.appendRow([
-          TextCellValue(c['name_en'] ?? ''),
-          TextCellValue(c['name_ar'] ?? ''),
-          TextCellValue(isGroupStr),
-          TextCellValue(parentName),
-          TextCellValue(''),
-          TextCellValue(''),
-          TextCellValue(''),
-          TextCellValue(''),
-          TextCellValue(''),
-          TextCellValue(''),
-          TextCellValue(''),
-          TextCellValue(''),
-          TextCellValue(c['tax_card_url'] ?? ''),
-        ]);
-      } else {
-        for (int i = 0; i < maxRows; i++) {
-          final addr = i < addrs.length ? addrs[i] : null;
-          final cont = i < contacts.length ? contacts[i] : null;
-
-          sheet.appendRow([
-            TextCellValue(c['name_en'] ?? ''),
-            TextCellValue(c['name_ar'] ?? ''),
-            TextCellValue(isGroupStr),
-            TextCellValue(parentName),
-            TextCellValue(addr?['type'] ?? ''),
-            TextCellValue(addr?['address_en'] ?? ''),
-            TextCellValue(addr?['address_ar'] ?? ''),
-            TextCellValue(addr?['map_url'] ?? ''),
-            TextCellValue(cont?['name_en'] ?? ''),
-            TextCellValue(cont?['name_ar'] ?? ''),
-            TextCellValue(cont?['role_en'] ?? cont?['role_ar'] ?? ''),
-            TextCellValue(cont?['phone'] ?? ''),
-            TextCellValue(c['tax_card_url'] ?? ''),
-          ]);
-        }
-      }
-    }
-
     final bytes = excel.encode();
     if (bytes != null) {
-      _triggerDownloadWeb(bytes, 'corphub_current_data.xlsx');
-    }
-  }
-
-  void _triggerDownloadWeb(List<int> bytes, String fileName) {
-    final base64 = base64Encode(bytes);
-    final anchor = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,$base64';
-    launchUrl(Uri.parse(anchor), mode: LaunchMode.externalApplication);
-  }
-
-  Future<void> _handleExcelUpload({required String mode}) async {
-    final s = AppState.instance;
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx', 'xls'],
-      withData: true,
-    );
-
-    if (result == null || result.files.single.bytes == null) return;
-
-    setState(() => _busy = true);
-
-    try {
-      final bytes = result.files.single.bytes!;
-      final excel = Excel.decodeBytes(bytes);
-
-      if (mode == 'wipe_import') {
-        await Supabase.instance.client.from('company_contacts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        await Supabase.instance.client.from('company_addresses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        await Supabase.instance.client.from('companies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      }
-
-      final Map<String, String> companyNameToId = {};
-      final List<Map<String, String>> pendingParentLinks = [];
-
-      for (var table in excel.tables.keys) {
-        final rows = excel.tables[table]!.rows;
-        if (rows.length <= 1) continue;
-
-        for (int i = 1; i < rows.length; i++) {
-          final row = rows[i];
-          if (row.isEmpty) continue;
-
-          final nameEn = row.length > 0 ? row[0]?.value?.toString().trim() ?? '' : '';
-          final nameAr = row.length > 1 ? row[1]?.value?.toString().trim() ?? '' : '';
-          final isGroupVal = row.length > 2 ? row[2]?.value?.toString().trim().toUpperCase() == 'TRUE' : false;
-          final parentName = row.length > 3 ? row[3]?.value?.toString().trim() ?? '' : '';
-          final addrType = row.length > 4 ? row[4]?.value?.toString().trim() ?? 'mailing' : 'mailing';
-          final addrEn = row.length > 5 ? row[5]?.value?.toString().trim() : null;
-          final addrAr = row.length > 6 ? row[6]?.value?.toString().trim() : null;
-          final mapUrl = row.length > 7 ? row[7]?.value?.toString().trim() : null;
-          final contNameEn = row.length > 8 ? row[8]?.value?.toString().trim() : null;
-          final contNameAr = row.length > 9 ? row[9]?.value?.toString().trim() : null;
-          final contRole = row.length > 10 ? row[10]?.value?.toString().trim() : null;
-          final contPhone = row.length > 11 ? row[11]?.value?.toString().trim() : null;
-          final taxCardUrl = row.length > 12 ? row[12]?.value?.toString().trim() : null;
-
-          if (nameEn.isEmpty && nameAr.isEmpty) continue;
-
-          var comp = await Supabase.instance.client
-              .from('companies')
-              .select()
-              .or('name_en.eq."$nameEn",name_ar.eq."$nameAr"')
-              .maybeSingle();
-
-          String compId;
-          if (comp == null) {
-            final ins = await Supabase.instance.client.from('companies').insert({
-              'name_en': nameEn.isEmpty ? null : nameEn,
-              'name_ar': nameAr.isEmpty ? null : nameAr,
-              'is_group': isGroupVal,
-              'tax_card_url': taxCardUrl,
-            }).select().single();
-            compId = ins['id'];
-          } else {
-            compId = comp['id'];
-            final Map<String, dynamic> updateData = {'is_group': isGroupVal};
-            if (taxCardUrl != null && taxCardUrl.isNotEmpty) updateData['tax_card_url'] = taxCardUrl;
-            await Supabase.instance.client.from('companies').update(updateData).eq('id', compId);
-          }
-
-          if (nameEn.isNotEmpty) companyNameToId[nameEn.toLowerCase()] = compId;
-          if (nameAr.isNotEmpty) companyNameToId[nameAr.toLowerCase()] = compId;
-
-          if (parentName.isNotEmpty) {
-            pendingParentLinks.add({'child_id': compId, 'parent_name': parentName.toLowerCase()});
-          }
-
-          if ((addrEn != null && addrEn.isNotEmpty) || (addrAr != null && addrAr.isNotEmpty) || (mapUrl != null && mapUrl.isNotEmpty)) {
-            await Supabase.instance.client.from('company_addresses').insert({
-              'company_id': compId,
-              'type': addrType == 'operation' ? 'operation' : 'mailing',
-              'address_en': addrEn,
-              'address_ar': addrAr,
-              'map_url': mapUrl,
-            });
-          }
-
-          if ((contNameEn != null && contNameEn.isNotEmpty) || (contNameAr != null && contNameAr.isNotEmpty)) {
-            await Supabase.instance.client.from('company_contacts').insert({
-              'company_id': compId,
-              'name_en': contNameEn,
-              'name_ar': contNameAr,
-              'role_en': contRole,
-              'role_ar': contRole,
-              'phone': contPhone,
-            });
-          }
-        }
-
-        for (var link in pendingParentLinks) {
-          final parentId = companyNameToId[link['parent_name']];
-          if (parentId != null) {
-            await Supabase.instance.client
-                .from('companies')
-                .update({'parent_company_id': parentId})
-                .eq('id', link['child_id']!);
-          }
-        }
-      }
-
-      widget.onUpdate();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.t('Excel data processed with groups successfully!', 'تمت معالجة ملف الإكسيل وربط المجموعات بنجاح!'))),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  void _wipeAllData() async {
-    final s = AppState.instance;
-    final confirm = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => AlertDialog(
-        title: Text(s.t('DANGER: Wipe All Companies?', 'تحذير شديد: مسح جميع الشركات؟')),
-        content: Text(s.t('This will permanently delete all companies, addresses, and contacts. Are you absolutely sure?', 'سيتم حذف كل الشركات والعناوين والأرقام نهائياً ولا يمكن استرجاعها! هل أنت متأكد؟')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(s.t('Cancel', 'إلغاء'))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(s.t('WIPE EVERYTHING', 'مسح الكل نهائياً')),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      setState(() => _busy = true);
-      await Supabase.instance.client.from('company_contacts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await Supabase.instance.client.from('company_addresses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await Supabase.instance.client.from('companies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      widget.onUpdate();
-      setState(() => _busy = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('All company data has been wiped.', 'تم تفريغ كافة البيانات.'))));
-      }
+      final base64 = base64Encode(bytes);
+      launchUrl(Uri.parse('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,$base64'), mode: LaunchMode.externalApplication);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
-    final isMobile = MediaQuery.of(context).size.width < 768;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(s.t('Admin Control Panel', 'لوحة تحكم الإدارة')),
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: isMobile,
-          indicatorColor: const Color(0xFF008DDA),
+          isScrollable: true,
           tabs: [
-            Tab(icon: const Icon(Icons.table_chart), text: s.t('Excel Operations', 'إدارة الإكسيل')),
-            Tab(icon: const Icon(Icons.people), text: s.t('User Panel', 'إدارة المستخدمين')),
-            Tab(icon: const Icon(Icons.lock_reset), text: s.t('Password Resets (${_resets.length})', 'استعادة الباسورد (${_resets.length})')),
-            Tab(icon: const Icon(Icons.mark_email_unread), text: s.t('Requests (${_requests.length})', 'طلبات الانضمام (${_requests.length})')),
+            Tab(icon: const Icon(Icons.table_chart), text: s.t('Excel Operations', 'الإكسيل')),
+            Tab(icon: const Icon(Icons.people), text: s.t('User Panel', 'المستخدمين')),
+            Tab(icon: const Icon(Icons.lock_reset), text: s.t('Resets', 'الاستعادة')),
+            Tab(icon: const Icon(Icons.mark_email_unread), text: s.t('Requests', 'الطلبات')),
           ],
         ),
       ),
@@ -3179,97 +2373,31 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               controller: _tabController,
               children: [
                 ListView(
-                  padding: EdgeInsets.all(isMobile ? 12 : 20),
+                  padding: const EdgeInsets.all(20),
                   children: [
-                    Text(s.t('Excel Management & Bulk Import', 'مركز إدارة وتحميل ملفات الإكسيل'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                    const SizedBox(height: 16),
                     Card(
                       child: ListTile(
                         leading: const Icon(Icons.download, color: Colors.blueAccent),
-                        title: Text(s.t('Download Excel Template (template.xlsx)', 'تحميل القالب الفارغ (template.xlsx)')),
-                        subtitle: Text(s.t('Download template with predefined columns', 'ملف فارغ جاهز بالأعمدة المطلوبة والمجموعات')),
+                        title: Text(s.t('Download Template', 'تحميل قالب الإكسيل')),
                         trailing: ElevatedButton(onPressed: _downloadTemplate, child: Text(s.t('Download', 'تحميل'))),
                       ),
                     ),
                     Card(
                       child: ListTile(
                         leading: const Icon(Icons.file_download, color: Colors.teal),
-                        title: Text(s.t('Export Current Data to Excel', 'تنزيل الداتا الحالية في إكسيل للتعديل')),
-                        subtitle: Text(s.t('Download all stored companies and contacts to edit them on your PC', 'تنزيل كامل الشركات لتعديلها ثم إعادة رفعها')),
+                        title: Text(s.t('Export Data', 'تصدير الداتا الحالية')),
                         trailing: ElevatedButton(onPressed: _exportCurrentData, child: Text(s.t('Export', 'تصدير'))),
-                      ),
-                    ),
-                    const Divider(height: 32),
-                    Text(s.t('Upload Actions:', 'خيارات الرفع والتحديث:'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 10),
-                    if (isMobile) ...[
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white, padding: const EdgeInsets.all(14)),
-                        icon: const Icon(Icons.add),
-                        label: Text(s.t('Append to Existing Data', 'إضافة فوق الحالي')),
-                        onPressed: () => _handleExcelUpload(mode: 'append'),
-                      ),
-                      const SizedBox(height: 8),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade800, foregroundColor: Colors.white, padding: const EdgeInsets.all(14)),
-                        icon: const Icon(Icons.sync),
-                        label: Text(s.t('Update / Merge Data', 'تحديث وتعديل القائم')),
-                        onPressed: () => _handleExcelUpload(mode: 'update'),
-                      ),
-                    ] else ...[
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
-                              icon: const Icon(Icons.add),
-                              label: Text(s.t('Append to Existing Data\n(إضافة فوق الحالي)', 'إضافة فوق الحالي')),
-                              onPressed: () => _handleExcelUpload(mode: 'append'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade800, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
-                              icon: const Icon(Icons.sync),
-                              label: Text(s.t('Update / Merge Data\n(تحديث وتعديل القائم)', 'تحديث وتعديل القائم')),
-                              onPressed: () => _handleExcelUpload(mode: 'update'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, padding: const EdgeInsets.all(14)),
-                      icon: const Icon(Icons.delete_sweep),
-                      label: Text(s.t('Wipe & Import From Scratch (مسح كامل وإضافة الفايل من الصفر)', 'مسح كامل وإضافة الفايل من الصفر')),
-                      onPressed: () => _handleExcelUpload(mode: 'wipe_import'),
-                    ),
-                    const Divider(height: 40),
-                    Card(
-                      color: Colors.red.shade900.withOpacity(0.2),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.red)),
-                      child: ListTile(
-                        leading: const Icon(Icons.warning, color: Colors.red),
-                        title: Text(s.t('Danger Zone: Wipe All Data', 'منطقة الخطر: مسح وتفريغ الداتا بالكامل'), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                        subtitle: Text(s.t('Delete all companies, contacts and addresses from the database', 'مسح كافة الشركات وجهات الاتصال بشكل دائم')),
-                        trailing: ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                          onPressed: _wipeAllData,
-                          child: Text(s.t('Wipe All', 'مسح الكل')),
-                        ),
                       ),
                     ),
                   ],
                 ),
                 ListView(
-                  padding: EdgeInsets.all(isMobile ? 12 : 20),
+                  padding: const EdgeInsets.all(20),
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(s.t('System Users & Permissions', 'مستخدمو النظام والصلاحيات'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                        Text(s.t('System Users', 'مستخدمو النظام'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
                           icon: const Icon(Icons.person_add),
@@ -3279,162 +2407,28 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       ],
                     ),
                     const SizedBox(height: 16),
-                    ..._users.map((u) {
-                      final isActive = u['is_active'] ?? true;
-                      final role = u['role'] ?? 'viewer';
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: role == 'admin' ? Colors.blue : (role == 'editor' ? Colors.green : Colors.grey),
-                            child: Icon(role == 'admin' ? Icons.security : (role == 'editor' ? Icons.edit : Icons.remove_red_eye), color: Colors.white),
+                    ..._users.map((u) => Card(
+                          child: ListTile(
+                            title: Text('${u["username"]} (PIN: ${u["pin_code"]})', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('Role: ${u["role"]}'),
                           ),
-                          title: Text('${u["username"] ?? "User"} (كود: ${u["pin_code"]})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('Role: ${role.toUpperCase()} | Active: $isActive'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: Color(0xFF008DDA)),
-                                tooltip: s.t('Edit User Details', 'تعديل بيانات المستخدم بالكامل'),
-                                onPressed: () => _openEditUserDialog(u),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.password, color: Colors.orangeAccent),
-                                tooltip: s.t('Custom Password Reset', 'تعيين كلمة مرور جديدة من اختيارك'),
-                                onPressed: () => _openCustomPasswordResetDialog(u),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                                tooltip: s.t('Delete User', 'حذف المستخدم نهائياً'),
-                                onPressed: () => _deleteUser(u),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
+                        )),
                   ],
                 ),
                 ListView(
-                  padding: EdgeInsets.all(isMobile ? 12 : 20),
+                  padding: const EdgeInsets.all(20),
                   children: [
-                    Text(s.t('Password Resets Log', 'سجل طلبات استعادة كلمة المرور'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    Text(s.t('Password Resets', 'طلبات استعادة كلمة المرور'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                     const SizedBox(height: 12),
-                    if (_resets.isEmpty)
-                      Text(s.t('No password reset records found', 'لا توجد سجلات استعادة'))
-                    else
-                      ..._resets.map((r) {
-                        final status = r['status'] ?? 'pending';
-                        final isPending = status == 'pending';
-                        final notes = r['admin_notes'];
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    CircleAvatar(
-                                      backgroundColor: status == 'approved' ? Colors.green : (status == 'rejected' ? Colors.red : Colors.amber),
-                                      child: Icon(status == 'approved' ? Icons.check : (status == 'rejected' ? Icons.close : Icons.lock_reset), color: Colors.white, size: 20),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('${s.t("PIN:", "الكود:")} ${r["pin_code"]} | ${s.t("Phone:", "الهاتف:")} ${r["phone"]}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                          Text('${s.t("Status:", "الحالة:")} ${status.toUpperCase()}', style: TextStyle(color: status == 'approved' ? Colors.green : (status == 'rejected' ? Colors.redAccent : Colors.orange), fontSize: 12, fontWeight: FontWeight.bold)),
-                                          if (notes != null && notes.isNotEmpty)
-                                            Text('${s.t("Note/Reason:", "السبب/الملاحظة:")} $notes', style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
-                                        ],
-                                      ),
-                                    ),
-                                    if (isPending) ...[
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10)),
-                                        onPressed: () => _handlePasswordResetDecision(r, true),
-                                        child: Text(s.t('Approve', 'موافقة')),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10)),
-                                        onPressed: () => _handlePasswordResetDecision(r, false),
-                                        child: Text(s.t('Reject', 'رفض')),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
+                    ..._resets.map((r) => Card(child: ListTile(title: Text('PIN: ${r["pin_code"]} - Phone: ${r["phone"]}')))),
                   ],
                 ),
                 ListView(
-                  padding: EdgeInsets.all(isMobile ? 12 : 20),
+                  padding: const EdgeInsets.all(20),
                   children: [
-                    Text(s.t('Access Requests Log', 'سجل طلبات الانضمام'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    Text(s.t('Access Requests', 'طلبات الانضمام'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                     const SizedBox(height: 12),
-                    if (_requests.isEmpty)
-                      Text(s.t('No access requests found', 'لا توجد طلبات انضمام مسجلة'))
-                    else
-                      ..._requests.map((req) {
-                        final status = req['status'] ?? 'pending';
-                        final isPending = status == 'pending';
-                        final notes = req['admin_notes'];
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    CircleAvatar(
-                                      backgroundColor: status == 'approved' ? Colors.green : (status == 'rejected' ? Colors.red : Colors.blue),
-                                      child: Icon(status == 'approved' ? Icons.check : (status == 'rejected' ? Icons.close : Icons.person), color: Colors.white, size: 20),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('${req["full_name"]} (${req["phone"]})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                          Text('${s.t("Status:", "الحالة:")} ${status.toUpperCase()}', style: TextStyle(color: status == 'approved' ? Colors.green : (status == 'rejected' ? Colors.redAccent : Colors.orange), fontSize: 12, fontWeight: FontWeight.bold)),
-                                          if (notes != null && notes.isNotEmpty)
-                                            Text('${s.t("Note/Reason:", "السبب/الملاحظة:")} $notes', style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
-                                        ],
-                                      ),
-                                    ),
-                                    if (isPending) ...[
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10)),
-                                        onPressed: () => _handleAccessRequestDecision(req, true),
-                                        child: Text(s.t('Approve', 'موافقة')),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10)),
-                                        onPressed: () => _handleAccessRequestDecision(req, false),
-                                        child: Text(s.t('Reject', 'رفض')),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
+                    ..._requests.map((req) => Card(child: ListTile(title: Text('${req["full_name"]} (${req["phone"]})')))),
                   ],
                 ),
               ],
