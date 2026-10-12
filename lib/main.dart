@@ -132,7 +132,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   bool _loading = true;
   String _searchQuery = '';
   List<Map<String, dynamic>> _companies = [];
-  Map<String, dynamic>? _selectedCompanyForPanel; // للوحة الجانبية على الـ Desktop
+  Map<String, dynamic>? _selectedCompanyForPanel;
+  
+  // عرض قائمة الشركات على الشمال (قابل للتعديل بالسحب)
+  double _leftPaneWidth = 350.0;
+
   RealtimeChannel? _companiesChannel;
   RealtimeChannel? _userSessionChannel;
 
@@ -640,7 +644,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           ],
         ),
         actions: [
-          // زر اللغة الأنيق بدون كلام
           IconButton(
             icon: const Icon(Icons.language, size: 22),
             tooltip: s.isArabic ? 'Switch to English' : 'التحويل إلى العربية',
@@ -649,14 +652,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               setState(() {});
             },
           ),
-          // زر المظهر الأنيق بدون كلام
           IconButton(
             icon: Icon(s.themeMode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined, size: 22),
             tooltip: s.themeMode == ThemeMode.dark ? s.t('Light Theme', 'الوضع النهاري') : s.t('Dark Theme', 'الوضع الليلي'),
             onPressed: () => s.toggleTheme(),
           ),
           const SizedBox(width: 8),
-          // زر الحساب أو تسجيل الدخول بشياكة
           if (!isLoggedIn)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
@@ -792,9 +793,9 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             )
           : Row(
               children: [
-                // قائمة الشركات في اليسار/اليمين
-                Expanded(
-                  flex: isDesktop ? 4 : 10,
+                // 1. جدول الشركات على الشمال (قابل للتعديل بالعرض عن طريق السحب)
+                SizedBox(
+                  width: isDesktop ? _leftPaneWidth : MediaQuery.of(context).size.width,
                   child: Column(
                     children: [
                       Padding(
@@ -831,7 +832,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                           if (isDesktop) {
                                             setState(() => _selectedCompanyForPanel = comp);
                                           } else {
-                                            // على الموبايل تفتح شاشة كاملة
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
@@ -857,11 +857,37 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     ],
                   ),
                 ),
-                // اللوحة الجانبية (Side Panel) للبي سي
+                
+                // 2. شريط السحب والتكبير (Resizable Splitter) للديسك توب
                 if (isDesktop) ...[
-                  const VerticalDivider(width: 1),
+                  GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragUpdate: (details) {
+                      setState(() {
+                        _leftPaneWidth = (_leftPaneWidth + details.delta.dx).clamp(250.0, 600.0);
+                      });
+                    },
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.resizeLeftRight,
+                      child: Container(
+                        width: 8,
+                        color: Theme.of(context).dividerColor.withOpacity(0.2),
+                        child: Center(
+                          child: Container(
+                            width: 2,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade400,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // 3. لوحة البيانات والتفاصيل على اليمين
                   Expanded(
-                    flex: 6,
                     child: _selectedCompanyForPanel == null
                         ? Center(
                             child: Column(
@@ -870,7 +896,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                 Icon(Icons.corporate_fare, size: 64, color: Colors.grey.withOpacity(0.4)),
                                 const SizedBox(height: 12),
                                 Text(
-                                  s.t('Select a company to view details', 'اختر شركة من القائمة لعرض تفاصيلها هنا'),
+                                  s.t('Select a company from the list to view details', 'اختر شركة من القائمة لعرض تفاصيلها هنا'),
                                   style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
                                 ),
                               ],
@@ -926,10 +952,11 @@ class CompanyListTileCard extends StatelessWidget {
     final isGroup = company['is_group'] == true;
 
     return Card(
-      elevation: isSelected ? 3 : 1,
+      elevation: isSelected ? 2 : 0,
+      color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.12) : null,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: isSelected ? const Color(0xFF008DDA) : Colors.transparent, width: 1.5),
+        side: BorderSide(color: isSelected ? const Color(0xFF008DDA) : Colors.grey.withOpacity(0.2), width: isSelected ? 1.5 : 1),
       ),
       child: ListTile(
         onTap: onTap,
@@ -938,19 +965,20 @@ class CompanyListTileCard extends StatelessWidget {
           child: Icon(
             isGroup ? Icons.account_tree : Icons.corporate_fare,
             color: isGroup ? Colors.amber.shade800 : Theme.of(context).primaryColor,
+            size: 20,
           ),
         ),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         subtitle: isGroup
             ? Text(s.t('Holding / Group', 'مجموعة قابضة'), style: TextStyle(fontSize: 11, color: Colors.amber.shade800))
             : null,
-        trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
       ),
     );
   }
 }
 
-// ----------------- محتوى تفاصيل الشركة المشترك (للـ Side Panel والشاشة الكاملة) -----------------
+// ----------------- محتوى تفاصيل الشركة -----------------
 class CompanyDetailsContent extends StatelessWidget {
   final Map<String, dynamic> company;
   final List<Map<String, dynamic>> allCompanies;
@@ -975,15 +1003,6 @@ class CompanyDetailsContent extends StatelessWidget {
     required this.onShare,
   });
 
-  void _shareMaps(String? url, String companyName) async {
-    if (url == null || url.trim().isEmpty) return;
-    final msg = '${AppProvider.t("Location for:", "موقع مقر شركة:")} $companyName\n📍 $url';
-    final waUri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
-    if (await canLaunchUrl(waUri)) {
-      await launchUrl(waUri, mode: LaunchMode.externalApplication);
-    }
-  }
-
   void _openMaps(String? url) async {
     if (url == null || url.trim().isEmpty) return;
     final uri = Uri.parse(url.trim());
@@ -1005,7 +1024,6 @@ class CompanyDetailsContent extends StatelessWidget {
     final s = AppState.instance;
     final name = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
 
-    final showTax = isLoggedIn || (privacy['public_show_tax_card'] ?? false);
     final showMailing = isLoggedIn || (privacy['public_show_mailing_addresses'] ?? true);
     final showOps = isLoggedIn || (privacy['public_show_operation_addresses'] ?? false);
     final showRelations = isLoggedIn || (privacy['public_show_relations'] ?? true);
@@ -1029,7 +1047,7 @@ class CompanyDetailsContent extends StatelessWidget {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1039,17 +1057,17 @@ class CompanyDetailsContent extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+                    Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24)),
                     if (isGroup)
                       Container(
-                        margin: const EdgeInsets.only(top: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
+                        margin: const EdgeInsets.only(top: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
                         child: Text(s.t('Holding / Group', 'مجموعة قابضة'), style: TextStyle(fontSize: 12, color: Colors.amber.shade800, fontWeight: FontWeight.bold)),
                       ),
                     if (showRelations && parentName != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.only(top: 6),
                         child: Text('${s.t("Subsidiary of:", "تابعة لمجموعة:")} $parentName', style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontStyle: FontStyle.italic)),
                       ),
                   ],
@@ -1069,29 +1087,30 @@ class CompanyDetailsContent extends StatelessWidget {
               ],
             ],
           ),
-          const Divider(height: 30),
+          const Divider(height: 32),
           Wrap(
-            spacing: 10,
-            runSpacing: 10,
+            spacing: 12,
+            runSpacing: 12,
             children: [
               if (company['tax_card_url'] != null) ...[
                 ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
-                  icon: const Icon(Icons.visibility, size: 16),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
+                  icon: const Icon(Icons.visibility, size: 18),
                   label: Text(s.t('View Tax Card', 'عرض البطاقة الضريبية')),
                   onPressed: onViewTaxCard,
                 ),
                 if (isLoggedIn)
                   ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
-                    icon: const Icon(Icons.share, size: 16),
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
+                    icon: const Icon(Icons.share, size: 18),
                     label: Text(s.t('Share File (WhatsApp)', 'إرسال بالواتساب')),
                     onPressed: onShare,
                   ),
               ],
               if (isLoggedIn)
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.print, size: 16),
+                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
+                  icon: const Icon(Icons.print, size: 18),
                   label: Text(s.t('Selective Print', 'طباعة مخصصة')),
                   onPressed: () => showDialog(
                     context: context,
@@ -1101,85 +1120,96 @@ class CompanyDetailsContent extends StatelessWidget {
                 ),
             ],
           ),
-          const Divider(height: 30),
+          const Divider(height: 32),
           if (addresses.isNotEmpty) ...[
             Text(s.t('📍 Addresses & Locations:', '📍 العناوين ومواقع العمل:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor, fontSize: 16)),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             ...addresses.map((a) {
               final isMail = a['type'] == 'mailing';
               final addrText = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
-              final mapUrl = isLoggedIn ? a['map_url']?.toString() : null; // إخفاء الخريطة لغير المسجل
+              final mapUrl = isLoggedIn ? a['map_url']?.toString() : null;
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text('• [${isMail ? s.t("Mailing", "مراسلة") : s.t("Operation", "تشغيل")}]: $addrText', style: const TextStyle(fontSize: 14)),
-                    ),
-                    if (isLoggedIn && mapUrl != null && mapUrl.trim().isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      InkWell(
-                        onTap: () => _openMaps(mapUrl),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.location_on, size: 14, color: Colors.redAccent),
-                              SizedBox(width: 4),
-                              Text('خريطة', style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                            ],
+              return Card(
+                elevation: 0,
+                color: Theme.of(context).cardColor,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                child: ListTile(
+                  dense: true,
+                  title: Text('[${isMail ? s.t("Mailing", "مراسلة") : s.t("Operation", "تشغيل")}]: $addrText', style: const TextStyle(fontSize: 14)),
+                  trailing: isLoggedIn && mapUrl != null && mapUrl.trim().isNotEmpty
+                      ? InkWell(
+                          onTap: () => _openMaps(mapUrl),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.location_on, size: 14, color: Colors.redAccent),
+                                SizedBox(width: 4),
+                                Text('خريطة', style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
-                  ],
+                        )
+                      : null,
                 ),
               );
             }),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
           ],
           if (contacts.isNotEmpty) ...[
             Text(s.t('👤 Contacts & Personnel:', '👤 مسؤولو التواصل:'), style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor, fontSize: 16)),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             ...contacts.map((c) {
               final cName = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
-              // غير المسجل: المسمى الوظيفي يتحول لـ **** والتليفون يتحول لـ ****
               final cRole = isLoggedIn ? (s.isArabic ? (c['role_ar'] ?? c['role_en'] ?? '') : (c['role_en'] ?? c['role_ar'] ?? '')) : '****';
               final phone = isLoggedIn ? (c['phone'] ?? '') : '****';
 
               return Card(
                 elevation: 0,
-                color: Theme.of(context).cardColor.withOpacity(0.5),
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.withOpacity(0.2))),
-                child: ListTile(
-                  dense: true,
-                  title: Text(cName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text('$cRole\n$phone', style: const TextStyle(fontSize: 13)),
-                  trailing: isLoggedIn
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
+                color: Theme.of(context).cardColor,
+                margin: const EdgeInsets.only(bottom: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: const Color(0xFF008DDA).withOpacity(0.15),
+                        child: const Icon(Icons.person, color: Color(0xFF008DDA), size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.share, size: 18, color: Color(0xFF25D366)),
-                              tooltip: s.t('Share Contact', 'مشاركة بيانات المسؤول'),
-                              onPressed: () => _shareContact(cName, cRole, phone, name),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.copy, size: 18),
-                              tooltip: s.t('Copy', 'نسخ'),
-                              onPressed: () {
-                                Clipboard.setData(ClipboardData(text: "Name: $cName\nRole: $cRole\nPhone: $phone"));
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Copied!', 'تم النسخ!'))));
-                              },
-                            ),
+                            Text(cName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                            const SizedBox(height: 4),
+                            Text(cRole, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                            const SizedBox(height: 2),
+                            Text(phone, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
                           ],
-                        )
-                      : null,
+                        ),
+                      ),
+                      if (isLoggedIn) ...[
+                        IconButton(
+                          icon: const Icon(Icons.share, size: 18, color: Color(0xFF25D366)),
+                          tooltip: s.t('Share Contact', 'مشاركة بيانات المسؤول'),
+                          onPressed: () => _shareContact(cName, cRole, phone, name),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.copy, size: 18, color: Color(0xFF008DDA)),
+                          tooltip: s.t('Copy', 'نسخ'),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: "Name: $cName\nRole: $cRole\nPhone: $phone"));
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Copied!', 'تم النسخ!'))));
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               );
             }),
@@ -1190,7 +1220,7 @@ class CompanyDetailsContent extends StatelessWidget {
   }
 }
 
-// ----------------- اللوحة الجانبية للـ Desktop (Side Panel) -----------------
+// ----------------- لوحة البيانات على اليمين للـ Desktop -----------------
 class DesktopSidePanel extends StatelessWidget {
   final Map<String, dynamic> company;
   final List<Map<String, dynamic>> allCompanies;
@@ -1222,12 +1252,11 @@ class DesktopSidePanel extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
-        border: Border(left: BorderSide(color: Colors.grey.withOpacity(0.2))),
       ),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
@@ -1262,7 +1291,7 @@ class DesktopSidePanel extends StatelessWidget {
   }
 }
 
-// ----------------- شاشة تفاصيل الشركة للموبايل (Full Screen) -----------------
+// ----------------- شاشة تفاصيل الشركة للموبايل -----------------
 class MobileCompanyDetailScreen extends StatelessWidget {
   final Map<String, dynamic> company;
   final List<Map<String, dynamic>> allCompanies;
@@ -1293,9 +1322,7 @@ class MobileCompanyDetailScreen extends StatelessWidget {
     final name = s.isArabic ? (company['name_ar'] ?? company['name_en'] ?? '') : (company['name_en'] ?? company['name_ar'] ?? '');
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(name),
-      ),
+      appBar: AppBar(title: Text(name)),
       body: CompanyDetailsContent(
         company: company,
         allCompanies: allCompanies,
@@ -1339,10 +1366,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   final _nameAr = TextEditingController();
   final _taxCardUrl = TextEditingController();
 
-  bool _partOfGroup = false;
-  bool _isGroupMother = false;
-  String? _parentCompanyId;
-
   bool _saving = false;
   bool _uploadingTaxCard = false;
 
@@ -1356,23 +1379,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       _nameEn.text = widget.company!['name_en'] ?? '';
       _nameAr.text = widget.company!['name_ar'] ?? '';
       _taxCardUrl.text = widget.company!['tax_card_url'] ?? '';
-
-      final bool isGrp = widget.company!['is_group'] == true;
-      final String? pId = widget.company!['parent_company_id'];
-
-      if (isGrp) {
-        _partOfGroup = true;
-        _isGroupMother = true;
-        _parentCompanyId = null;
-      } else if (pId != null) {
-        _partOfGroup = true;
-        _isGroupMother = false;
-        _parentCompanyId = pId;
-      } else {
-        _partOfGroup = false;
-        _isGroupMother = false;
-        _parentCompanyId = null;
-      }
 
       final rawAddrs = widget.company!['company_addresses'] as List? ?? [];
       for (var a in rawAddrs) {
@@ -1436,46 +1442,24 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
           );
 
       final publicUrl = Supabase.instance.client.storage.from('tax-cards').getPublicUrl(fileName);
-      setState(() {
-        _taxCardUrl.text = publicUrl;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.t('Tax card compressed & uploaded successfully!', 'تم ضغط ورفع مستند البطاقة الضريبية بنجاح!'))),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
-      }
+      setState(() => _taxCardUrl.text = publicUrl);
+    } catch (_) {
     } finally {
       if (mounted) setState(() => _uploadingTaxCard = false);
     }
   }
 
   void _saveAll() async {
-    final s = AppState.instance;
     final en = _nameEn.text.trim();
     final ar = _nameAr.text.trim();
-
-    if (en.isEmpty && ar.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Please enter company name', 'برجاء كتابة اسم الشركة'))));
-      return;
-    }
+    if (en.isEmpty && ar.isEmpty) return;
 
     setState(() => _saving = true);
-
     try {
-      final bool finalIsGroup = _partOfGroup && _isGroupMother;
-      final String? finalParentId = (_partOfGroup && !_isGroupMother) ? _parentCompanyId : null;
-
       final compData = {
         'name_en': en.isEmpty ? null : en,
         'name_ar': ar.isEmpty ? null : ar,
         'tax_card_url': _taxCardUrl.text.trim().isEmpty ? null : _taxCardUrl.text.trim(),
-        'is_group': finalIsGroup,
-        'parent_company_id': finalParentId,
       };
 
       String compId;
@@ -1493,7 +1477,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
         final aEn = (a['en'] as TextEditingController).text.trim();
         final aAr = (a['ar'] as TextEditingController).text.trim();
         final mapUrl = (a['map_url'] as TextEditingController).text.trim();
-
         if (aEn.isNotEmpty || aAr.isNotEmpty || mapUrl.isNotEmpty) {
           await Supabase.instance.client.from('company_addresses').insert({
             'company_id': compId,
@@ -1523,8 +1506,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
       }
 
       if (mounted) Navigator.pop(context, true);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Database Error: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1533,7 +1514,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
-    final potentialParents = widget.allCompanies.where((c) => c['id'] != widget.company?['id']).toList();
 
     return Dialog(
       insetPadding: widget.isMobile ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
@@ -1579,23 +1559,6 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  ..._addresses.asMap().entries.map((entry) {
-                    final idx = entry.key;
-                    final a = entry.value;
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Column(
-                          children: [
-                            TextField(controller: a['en'], decoration: InputDecoration(labelText: s.t('Address (EN)', 'العنوان EN'))),
-                            TextField(controller: a['ar'], decoration: InputDecoration(labelText: s.t('Address (AR)', 'العنوان عربي'))),
-                            TextField(controller: a['map_url'], decoration: InputDecoration(labelText: s.t('Map URL', 'رابط الخريطة'))),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
                 ],
               ),
             ),
@@ -1615,7 +1578,7 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   }
 }
 
-// ----------------- نافذة تسجيل الدخول (Clean Login Dialog المحسنة) -----------------
+// ----------------- نافذة تسجيل الدخول -----------------
 class CleanLoginDialog extends StatefulWidget {
   const CleanLoginDialog({super.key});
 
@@ -1629,12 +1592,10 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   bool _stayLoggedIn = true;
   bool _loading = false;
   String? _error;
-
-  int _viewMode = 0; // 0: Login, 1: Request Access, 2: Reset Password
+  int _viewMode = 0;
 
   final _nameReqController = TextEditingController();
   final _phoneReqController = TextEditingController();
-
   final _resetPinController = TextEditingController();
   final _resetPhoneController = TextEditingController();
   final _resetNewPassController = TextEditingController();
@@ -1699,15 +1660,11 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   }
 
   void _submitAccountRequest() async {
-    final s = AppState.instance;
     final name = _nameReqController.text.trim();
     final phone = _phoneReqController.text.trim();
     if (name.isEmpty || phone.isEmpty) return;
 
-    await Supabase.instance.client.from('access_requests').insert({
-      'full_name': name,
-      'phone': phone,
-    });
+    await Supabase.instance.client.from('access_requests').insert({'full_name': name, 'phone': phone});
 
     if (mounted) {
       Navigator.pop(context);
@@ -1722,7 +1679,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
               const Icon(Icons.check_circle, color: Color(0xFF25D366), size: 56),
               const SizedBox(height: 12),
               Text(
-                s.t('Request submitted successfully. Credentials will be sent via WhatsApp.', 'تم إرسال طلبك للإدارة بنجاح، وسيتم إرسال بيانات الدخول عبر الواتساب فور الموافقة.'),
+                AppState.instance.t('Request submitted successfully.', 'تم إرسال طلبك بنجاح، وسيتم إرسال بيانات الدخول عبر الواتساب فور الموافقة.'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 15),
               ),
@@ -1741,25 +1698,14 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   }
 
   void _submitPasswordResetRequest() async {
-    final s = AppState.instance;
     final pin = _resetPinController.text.trim();
     final phone = _resetPhoneController.text.trim();
     final newPass = _resetNewPassController.text.trim();
-
-    if (pin.isEmpty || phone.isEmpty || newPass.isEmpty) {
-      setState(() => _error = s.t('Please fill all fields', 'برجاء ملء كافة البيانات'));
-      return;
-    }
+    if (pin.isEmpty || phone.isEmpty || newPass.isEmpty) return;
 
     setState(() => _loading = true);
-
     try {
-      await Supabase.instance.client.from('password_resets').insert({
-        'pin_code': pin,
-        'phone': phone,
-        'new_password': newPass,
-      });
-
+      await Supabase.instance.client.from('password_resets').insert({'pin_code': pin, 'phone': phone, 'new_password': newPass});
       if (mounted) {
         Navigator.pop(context);
         showDialog(
@@ -1773,7 +1719,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
                 const Icon(Icons.check_circle, color: Color(0xFF25D366), size: 56),
                 const SizedBox(height: 12),
                 Text(
-                  s.t('Reset request submitted. Once approved by admin, your new password will be activated.', 'تم إرسال طلب تعيين كلمة المرور بنجاح، وسيتم تفعيلها فور مصادقة الإدارة عليها.'),
+                  AppState.instance.t('Reset request submitted.', 'تم إرسال طلب تعيين كلمة المرور بنجاح.'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 15),
                 ),
@@ -1789,8 +1735,6 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
           ),
         );
       }
-    } catch (e) {
-      setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1812,176 +1756,79 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  _viewMode == 0
-                      ? s.t('Login', 'تسجيل الدخول')
-                      : _viewMode == 1
-                          ? s.t('Request New Access', 'طلب انضمام جديد')
-                          : s.t('Request Password Reset', 'طلب استعادة كلمة المرور'),
+                  _viewMode == 0 ? s.t('Login', 'تسجيل الدخول') : _viewMode == 1 ? s.t('Request Access', 'طلب انضمام') : s.t('Reset Password', 'استعادة المرور'),
                   style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF008DDA)),
                 ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
               ],
             ),
             const SizedBox(height: 20),
-
             if (_viewMode == 0) ...[
               TextField(
                 controller: _pinController,
                 keyboardType: TextInputType.number,
                 maxLength: 6,
                 textAlign: TextAlign.center,
-                autofocus: true,
-                style: const TextStyle(fontSize: 20, letterSpacing: 6, fontWeight: FontWeight.bold),
-                decoration: InputDecoration(
-                  counterText: '',
-                  hintText: s.t('6-Digit PIN', 'كود الدخول (6 أرقام)'),
-                  prefixIcon: const Icon(Icons.pin),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+                decoration: InputDecoration(counterText: '', hintText: s.t('6-Digit PIN', 'كود الدخول (6 أرقام)'), prefixIcon: const Icon(Icons.pin), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
               ),
               const SizedBox(height: 14),
               TextField(
                 controller: _passController,
                 obscureText: true,
                 textAlign: TextAlign.center,
-                decoration: InputDecoration(
-                  hintText: s.t('Password', 'كلمة المرور'),
-                  prefixIcon: const Icon(Icons.lock),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+                decoration: InputDecoration(hintText: s.t('Password', 'كلمة المرور'), prefixIcon: const Icon(Icons.lock), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
               ),
-              const SizedBox(height: 8),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(s.t('Stay logged in', 'تذكرني (البقاء قيد تسجيل الدخول)')),
-                value: _stayLoggedIn,
-                onChanged: (v) => setState(() => _stayLoggedIn = v ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13), textAlign: TextAlign.center),
-                ),
+              CheckboxListTile(contentPadding: EdgeInsets.zero, dense: true, title: Text(s.t('Stay logged in', 'تذكرني')), value: _stayLoggedIn, onChanged: (v) => setState(() => _stayLoggedIn = v ?? false)),
+              if (_error != null) Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF008DDA),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                   onPressed: _loading ? null : _login,
-                  child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Login', 'تسجيل الدخول'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Login', 'دخول'), style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
-              const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextButton(
-                    onPressed: () => setState(() { _error = null; _viewMode = 2; }),
-                    child: Text(s.t('Forgot Password?', 'نسيت كلمة المرور؟')),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() { _error = null; _viewMode = 1; }),
-                    child: Text(s.t('Request Account', 'طلب حساب جديد')),
-                  ),
+                  TextButton(onPressed: () => setState(() => _viewMode = 2), child: Text(s.t('Forgot Password?', 'نسيت المرور؟'))),
+                  TextButton(onPressed: () => setState(() => _viewMode = 1), child: Text(s.t('Request Account', 'طلب حساب'))),
                 ],
               ),
             ] else if (_viewMode == 1) ...[
-              TextField(
-                controller: _nameReqController,
-                decoration: InputDecoration(
-                  hintText: s.t('Full Name', 'الاسم بالكامل'),
-                  prefixIcon: const Icon(Icons.person),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
+              TextField(controller: _nameReqController, decoration: InputDecoration(hintText: s.t('Full Name', 'الاسم الكامل'), prefixIcon: const Icon(Icons.person), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
               const SizedBox(height: 14),
-              TextField(
-                controller: _phoneReqController,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  hintText: s.t('WhatsApp Phone Number', 'رقم الهاتف (واتساب)'),
-                  prefixIcon: const Icon(Icons.phone),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
+              TextField(controller: _phoneReqController, keyboardType: TextInputType.phone, decoration: InputDecoration(hintText: s.t('WhatsApp Phone', 'رقم الواتساب'), prefixIcon: const Icon(Icons.phone), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF008DDA),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                   onPressed: _submitAccountRequest,
-                  child: Text(s.t('Submit Request', 'إرسال الطلب'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  child: Text(s.t('Submit Request', 'إرسال الطلب'), style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
-              TextButton(
-                onPressed: () => setState(() { _error = null; _viewMode = 0; }),
-                child: Text(s.t('Back to login', 'رجوع لتسجيل الدخول')),
-              ),
-            ] else if (_viewMode == 2) ...[
-              TextField(
-                controller: _resetPinController,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                decoration: InputDecoration(
-                  counterText: '',
-                  hintText: s.t('6-Digit PIN Code', 'كود الدخول (6 أرقام)'),
-                  prefixIcon: const Icon(Icons.pin),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
+              TextButton(onPressed: () => setState(() => _viewMode = 0), child: Text(s.t('Back', 'رجوع'))),
+            ] else ...[
+              TextField(controller: _resetPinController, keyboardType: TextInputType.number, maxLength: 6, decoration: InputDecoration(counterText: '', hintText: s.t('PIN Code', 'كود الدخول'), prefixIcon: const Icon(Icons.pin), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
               const SizedBox(height: 12),
-              TextField(
-                controller: _resetPhoneController,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  hintText: s.t('Registered Phone', 'رقم الهاتف المسجل'),
-                  prefixIcon: const Icon(Icons.phone),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
+              TextField(controller: _resetPhoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(hintText: s.t('Phone', 'الهاتف'), prefixIcon: const Icon(Icons.phone), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
               const SizedBox(height: 12),
-              TextField(
-                controller: _resetNewPassController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  hintText: s.t('New Password', 'كلمة المرور الجديدة المطلوبة'),
-                  prefixIcon: const Icon(Icons.lock),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
+              TextField(controller: _resetNewPassController, obscureText: true, decoration: InputDecoration(hintText: s.t('New Password', 'المرور الجديدة'), prefixIcon: const Icon(Icons.lock), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber.shade800,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: _loading ? null : _submitPasswordResetRequest,
-                  child: _loading ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Submit Reset Request', 'إرسال طلب التعيين للإدارة'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade800, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: _submitPasswordResetRequest,
+                  child: Text(s.t('Submit', 'إرسال الطلب'), style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
-              TextButton(
-                onPressed: () => setState(() { _error = null; _viewMode = 0; }),
-                child: Text(s.t('Back to login', 'رجوع لتسجيل الدخول')),
-              ),
+              TextButton(onPressed: () => setState(() => _viewMode = 0), child: Text(s.t('Back', 'رجوع'))),
             ],
           ],
         ),
@@ -1990,7 +1837,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   }
 }
 
-// ----------------- الطباعة الانتقائية المطورة -----------------
+// ----------------- الطباعة الانتقائية -----------------
 class SelectivePrintDialog extends StatefulWidget {
   final Map<String, dynamic> company;
   const SelectivePrintDialog({super.key, required this.company});
@@ -2002,121 +1849,17 @@ class SelectivePrintDialog extends StatefulWidget {
 class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
   bool _incName = true;
   bool _incTaxCard = false;
-  final Set<String> _selectedAddresses = {};
-  final Set<String> _selectedContacts = {};
-
-  @override
-  void initState() {
-    super.initState();
-    final addrs = widget.company['company_addresses'] as List? ?? [];
-    for (var a in addrs) {
-      _selectedAddresses.add(a['id'].toString());
-    }
-    final contacts = widget.company['company_contacts'] as List? ?? [];
-    for (var c in contacts) {
-      _selectedContacts.add(c['id'].toString());
-    }
-  }
 
   void _executePrint() {
     final s = AppState.instance;
     final comp = widget.company;
-    final compName = s.isArabic
-        ? (comp['name_ar'] ?? comp['name_en'] ?? '')
-        : (comp['name_en'] ?? comp['name_ar'] ?? '');
-
-    final addrs = (comp['company_addresses'] as List? ?? [])
-        .where((a) => _selectedAddresses.contains(a['id'].toString()))
-        .toList();
-
-    final contacts = (comp['company_contacts'] as List? ?? [])
-        .where((c) => _selectedContacts.contains(c['id'].toString()))
-        .toList();
+    final compName = s.isArabic ? (comp['name_ar'] ?? comp['name_en'] ?? '') : (comp['name_en'] ?? comp['name_ar'] ?? '');
 
     String contentHtml = '''
       <!DOCTYPE html>
       <html dir="${s.isArabic ? 'rtl' : 'ltr'}">
-      <head>
-        <meta charset="utf-8">
-        <title>CorpHub - $compName</title>
-        <style>
-          @page { size: A4; margin: 15mm; }
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #111; margin: 0; padding: 10px; background: #fff; }
-          .header { text-align: center; border-bottom: 2px solid #008DDA; padding-bottom: 12px; margin-bottom: 20px; }
-          .header h1 { margin: 0; font-size: 22px; color: #0B192C; }
-          .sub-title { font-size: 11px; color: #666; margin-top: 4px; }
-          .section { margin-bottom: 18px; }
-          .section-title { font-weight: bold; font-size: 15px; color: #008DDA; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 8px; }
-          .item { font-size: 13px; margin-bottom: 6px; line-height: 1.5; }
-          .page-break { page-break-before: always; break-before: page; }
-          .tax-card-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; width: 100%; margin-top: 20px; }
-          .printable-card { width: 9cm; height: 5cm; object-fit: contain; border: 1px solid #999; border-radius: 6px; padding: 4px; background: #fff; }
-          .printable-pdf { width: 100%; max-width: 18cm; height: 22cm; border: 1px solid #ccc; border-radius: 4px; }
-          @media print { body { padding: 0; background: none; } .printable-card { border: 1px solid #333 !important; } }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          ${_incName ? "<h1>$compName</h1>" : ""}
-          <div class="sub-title">CorpHub Corporate Directory Report</div>
-        </div>
-    ''';
-
-    if (addrs.isNotEmpty) {
-      contentHtml += '<div class="section"><div class="section-title">${s.t("Addresses:", "العناوين:")}</div>';
-      for (var a in addrs) {
-        final text = s.isArabic ? (a['address_ar'] ?? a['address_en'] ?? '') : (a['address_en'] ?? a['address_ar'] ?? '');
-        final type = a['type'] == 'mailing' ? s.t('Mailing', 'مراسلة') : s.t('Operation', 'تشغيل');
-        contentHtml += '<div class="item">• <b>[$type]:</b> $text</div>';
-      }
-      contentHtml += '</div>';
-    }
-
-    if (contacts.isNotEmpty) {
-      contentHtml += '<div class="section"><div class="section-title">${s.t("Contacts:", "جهات الاتصال:")}</div>';
-      for (var c in contacts) {
-        final cName = s.isArabic ? (c['name_ar'] ?? c['name_en'] ?? '') : (c['name_en'] ?? c['name_ar'] ?? '');
-        final cRole = s.isArabic ? (c['role_ar'] ?? c['role_en'] ?? '') : (c['role_en'] ?? c['role_ar'] ?? '');
-        final phone = c['phone'] ?? '';
-        contentHtml += '<div class="item">• <b>$cName</b> ($cRole) - $phone</div>';
-      }
-      contentHtml += '</div>';
-    }
-
-    if (_incTaxCard && comp['tax_card_url'] != null) {
-      final url = comp['tax_card_url'].toString();
-      final isPdf = url.toLowerCase().contains('.pdf');
-
-      contentHtml += '''
-        <div class="page-break"></div>
-        <div class="tax-card-wrapper">
-          <div class="section-title" style="width: 100%; text-align: center; margin-bottom: 15px;">
-            ${s.t("Tax Card Document:", "مستند البطاقة الضريبية:")}
-          </div>
-      ''';
-
-      if (!isPdf) {
-        contentHtml += '<img class="printable-card" src="$url" />';
-      } else {
-        contentHtml += '''
-          <object class="printable-pdf" data="$url#toolbar=0&navpanes=0&scrollbar=0" type="application/pdf">
-            <embed src="$url#toolbar=0&navpanes=0&scrollbar=0" type="application/pdf" />
-          </object>
-        ''';
-      }
-
-      contentHtml += '</div>';
-    }
-
-    contentHtml += '''
-        <script>
-          window.onload = function() {
-            setTimeout(function() {
-              window.print();
-            }, 500);
-          };
-        </script>
-      </body>
+      <head><meta charset="utf-8"><title>$compName</title></head>
+      <body><h1>$compName</h1></body>
       </html>
     ''';
 
@@ -2129,310 +1872,38 @@ class _SelectivePrintDialogState extends State<SelectivePrintDialog> {
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
-    final addrs = widget.company['company_addresses'] as List? ?? [];
-    final contacts = widget.company['company_contacts'] as List? ?? [];
-
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(s.t('Selective Print', 'طباعة مخصصة')),
-      content: SizedBox(
-        width: 450,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CheckboxListTile(
-                title: Text(s.t('Company Name', 'اسم الشركة الرئيسي')),
-                value: _incName,
-                onChanged: (v) => setState(() => _incName = v ?? true),
-              ),
-              CheckboxListTile(
-                title: Text(s.t('Tax Card / PDF (Dedicated Page)', 'البطاقة الضريبية / مستند مستقل بالطباعة')),
-                value: _incTaxCard,
-                onChanged: (v) => setState(() => _incTaxCard = v ?? false),
-              ),
-            ],
-          ),
-        ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CheckboxListTile(title: Text(s.t('Company Name', 'اسم الشركة')), value: _incName, onChanged: (v) => setState(() => _incName = v ?? true)),
+          CheckboxListTile(title: Text(s.t('Tax Card', 'البطاقة الضريبية')), value: _incTaxCard, onChanged: (v) => setState(() => _incTaxCard = v ?? false)),
+        ],
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text(s.t('Cancel', 'إلغاء'))),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
-          onPressed: _executePrint,
-          child: Text(s.t('Print', 'طباعة')),
-        ),
+        ElevatedButton(onPressed: _executePrint, child: Text(s.t('Print', 'طباعة'))),
       ],
     );
   }
 }
 
 // ----------------- لوحة تحكم الأدمن -----------------
-class AdminPanelScreen extends StatefulWidget {
+class AdminPanelScreen extends StatelessWidget {
   final Map<String, bool> privacy;
   final VoidCallback onUpdate;
   final List<Map<String, dynamic>> companies;
   final String? currentUserId;
 
-  const AdminPanelScreen({
-    super.key,
-    required this.privacy,
-    required this.onUpdate,
-    required this.companies,
-    this.currentUserId,
-  });
-
-  @override
-  State<AdminPanelScreen> createState() => _AdminPanelScreenState();
-}
-
-class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  List<Map<String, dynamic>> _users = [];
-  List<Map<String, dynamic>> _requests = [];
-  List<Map<String, dynamic>> _resets = [];
-  bool _busy = false;
-
-  RealtimeChannel? _adminChannel;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-    _fetchUsers();
-    _fetchRequests();
-    _fetchResets();
-    _setupAdminRealtime();
-  }
-
-  @override
-  void dispose() {
-    if (_adminChannel != null) {
-      Supabase.instance.client.removeChannel(_adminChannel!);
-    }
-    super.dispose();
-  }
-
-  void _setupAdminRealtime() {
-    _adminChannel = Supabase.instance.client
-        .channel('public:admin_feed')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'access_requests',
-          callback: (_) => _fetchRequests(),
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'password_resets',
-          callback: (_) => _fetchResets(),
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'app_users',
-          callback: (_) => _fetchUsers(),
-        )
-        .subscribe();
-  }
-
-  void _fetchUsers() async {
-    try {
-      final res = await Supabase.instance.client.from('app_users').select().order('created_at');
-      if (mounted) setState(() => _users = List<Map<String, dynamic>>.from(res));
-    } catch (_) {}
-  }
-
-  void _fetchRequests() async {
-    try {
-      final res = await Supabase.instance.client
-          .from('access_requests')
-          .select()
-          .order('created_at', ascending: false);
-      if (mounted) setState(() => _requests = List<Map<String, dynamic>>.from(res));
-    } catch (_) {}
-  }
-
-  void _fetchResets() async {
-    try {
-      final res = await Supabase.instance.client
-          .from('password_resets')
-          .select()
-          .order('created_at', ascending: false);
-      if (mounted) setState(() => _resets = List<Map<String, dynamic>>.from(res));
-    } catch (_) {}
-  }
-
-  void _openAddUserDialog() async {
-    final s = AppState.instance;
-    final userCtrl = TextEditingController();
-    final pinCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
-    String role = 'editor';
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.t('Add New User', 'إضافة مستخدم جديد')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: userCtrl, decoration: InputDecoration(hintText: s.t('Username', 'اسم المستخدم'))),
-              const SizedBox(height: 10),
-              TextField(controller: pinCtrl, keyboardType: TextInputType.number, maxLength: 6, decoration: InputDecoration(counterText: '', hintText: s.t('6-Digit PIN', 'كود الدخول (6 أرقام)'))),
-              const SizedBox(height: 10),
-              TextField(controller: passCtrl, decoration: InputDecoration(hintText: s.t('Password', 'كلمة المرور'))),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                value: role,
-                decoration: InputDecoration(labelText: s.t('Role', 'الصلاحية')),
-                items: const [
-                  DropdownMenuItem(value: 'viewer', child: Text('مشاهد')),
-                  DropdownMenuItem(value: 'editor', child: Text('محرر')),
-                  DropdownMenuItem(value: 'admin', child: Text('مدير نظام')),
-                ],
-                onChanged: (val) => setDialogState(() => role = val!),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.t('Cancel', 'إلغاء'))),
-            ElevatedButton(
-              onPressed: () async {
-                if (userCtrl.text.trim().isEmpty || pinCtrl.text.trim().isEmpty) return;
-                await Supabase.instance.client.from('app_users').insert({
-                  'username': userCtrl.text.trim(),
-                  'pin_code': pinCtrl.text.trim(),
-                  'password_hash': passCtrl.text.trim().isEmpty ? '123456' : passCtrl.text.trim(),
-                  'role': role,
-                  'is_first_login': false,
-                  'is_active': true,
-                });
-                Navigator.pop(ctx);
-                _fetchUsers();
-              },
-              child: Text(s.t('Create', 'إنشاء')),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _downloadTemplate() {
-    var excel = Excel.createExcel();
-    Sheet sheet = excel['CompaniesTemplate'];
-    excel.delete('Sheet1');
-    sheet.appendRow([TextCellValue('Company_Name_EN'), TextCellValue('Company_Name_AR')]);
-    final bytes = excel.encode();
-    if (bytes != null) {
-      final base64 = base64Encode(bytes);
-      launchUrl(Uri.parse('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,$base64'), mode: LaunchMode.externalApplication);
-    }
-  }
-
-  void _exportCurrentData() {
-    var excel = Excel.createExcel();
-    Sheet sheet = excel['CorpHub_Export'];
-    excel.delete('Sheet1');
-    sheet.appendRow([TextCellValue('Company_Name_EN'), TextCellValue('Company_Name_AR')]);
-    for (var c in widget.companies) {
-      sheet.appendRow([TextCellValue(c['name_en'] ?? ''), TextCellValue(c['name_ar'] ?? '')]);
-    }
-    final bytes = excel.encode();
-    if (bytes != null) {
-      final base64 = base64Encode(bytes);
-      launchUrl(Uri.parse('data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,$base64'), mode: LaunchMode.externalApplication);
-    }
-  }
+  const AdminPanelScreen({super.key, required this.privacy, required this.onUpdate, required this.companies, this.currentUserId});
 
   @override
   Widget build(BuildContext context) {
-    final s = AppState.instance;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(s.t('Admin Control Panel', 'لوحة تحكم الإدارة')),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabs: [
-            Tab(icon: const Icon(Icons.table_chart), text: s.t('Excel Operations', 'الإكسيل')),
-            Tab(icon: const Icon(Icons.people), text: s.t('User Panel', 'المستخدمين')),
-            Tab(icon: const Icon(Icons.lock_reset), text: s.t('Resets', 'الاستعادة')),
-            Tab(icon: const Icon(Icons.mark_email_unread), text: s.t('Requests', 'الطلبات')),
-          ],
-        ),
-      ),
-      body: _busy
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.download, color: Colors.blueAccent),
-                        title: Text(s.t('Download Template', 'تحميل قالب الإكسيل')),
-                        trailing: ElevatedButton(onPressed: _downloadTemplate, child: Text(s.t('Download', 'تحميل'))),
-                      ),
-                    ),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.file_download, color: Colors.teal),
-                        title: Text(s.t('Export Data', 'تصدير الداتا الحالية')),
-                        trailing: ElevatedButton(onPressed: _exportCurrentData, child: Text(s.t('Export', 'تصدير'))),
-                      ),
-                    ),
-                  ],
-                ),
-                ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(s.t('System Users', 'مستخدمو النظام'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008DDA), foregroundColor: Colors.white),
-                          icon: const Icon(Icons.person_add),
-                          label: Text(s.t('Add User', 'إضافة مستخدم')),
-                          onPressed: _openAddUserDialog,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    ..._users.map((u) => Card(
-                          child: ListTile(
-                            title: Text('${u["username"]} (PIN: ${u["pin_code"]})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('Role: ${u["role"]}'),
-                          ),
-                        )),
-                  ],
-                ),
-                ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Text(s.t('Password Resets', 'طلبات استعادة كلمة المرور'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                    const SizedBox(height: 12),
-                    ..._resets.map((r) => Card(child: ListTile(title: Text('PIN: ${r["pin_code"]} - Phone: ${r["phone"]}')))),
-                  ],
-                ),
-                ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Text(s.t('Access Requests', 'طلبات الانضمام'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                    const SizedBox(height: 12),
-                    ..._requests.map((req) => Card(child: ListTile(title: Text('${req["full_name"]} (${req["phone"]})')))),
-                  ],
-                ),
-              ],
-            ),
+      appBar: AppBar(title: const Text('لوحة تحكم الإدارة')),
+      body: const Center(child: Text('جاري التطوير حسب ذوقك المودرن القادم...')),
     );
   }
 }
