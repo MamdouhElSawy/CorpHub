@@ -1337,7 +1337,7 @@ class AppProvider {
   static String t(String en, String ar) => AppState.instance.isArabic ? ar : en;
 }
 
-// ----------------- استمارة الإضافة والتعديل بتصميم موحد عائم ونظيف -----------------
+// ----------------- استمارة الإضافة والتعديل بتصميم القائمة الجانبية (Stepped Vertical Navigation) -----------------
 class AdvancedCompanyDialog extends StatefulWidget {
   final Map<String, dynamic>? company;
   final List<Map<String, dynamic>> allCompanies;
@@ -1357,6 +1357,8 @@ class AdvancedCompanyDialog extends StatefulWidget {
 }
 
 class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
+  int _activeNavIndex = 0;
+
   final _nameEn = TextEditingController();
   final _nameAr = TextEditingController();
   final _taxCardUrl = TextEditingController();
@@ -1399,6 +1401,30 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
     } else {
       _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController(), 'map_url': TextEditingController()});
       _contacts.add({'name_en': TextEditingController(), 'name_ar': TextEditingController(), 'role': TextEditingController(), 'phone': TextEditingController()});
+    }
+  }
+
+  void _addAddressField() {
+    setState(() {
+      _addresses.add({'type': 'operation', 'en': TextEditingController(), 'ar': TextEditingController(), 'map_url': TextEditingController()});
+    });
+  }
+
+  void _removeAddressField(int index) {
+    if (_addresses.length > 1) {
+      setState(() => _addresses.removeAt(index));
+    }
+  }
+
+  void _addContactField() {
+    setState(() {
+      _contacts.add({'name_en': TextEditingController(), 'name_ar': TextEditingController(), 'role': TextEditingController(), 'phone': TextEditingController()});
+    });
+  }
+
+  void _removeContactField(int index) {
+    if (_contacts.length > 1) {
+      setState(() => _contacts.removeAt(index));
     }
   }
 
@@ -1508,33 +1534,237 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
     );
   }
 
+  Widget _buildMainDetailsTab(AppState s) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(s.t('General Information', 'البيانات الأساسية'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _nameAr,
+          decoration: _cleanDecoration(s.t('Company Name (Arabic)', 'اسم الشركة بالعربية'), Icons.business_rounded),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _nameEn,
+          decoration: _cleanDecoration(s.t('Company Name (English)', 'اسم الشركة بالإنجليزي'), Icons.language_rounded),
+        ),
+        const SizedBox(height: 12),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(s.t('Is Holding Group?', 'مجموعة قابضة؟'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          value: _isGroup,
+          onChanged: (v) => setState(() => _isGroup = v),
+        ),
+        const SizedBox(height: 16),
+        Text(s.t('Tax Card File', 'البطاقة الضريبية'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _taxCardUrl,
+                decoration: _cleanDecoration(s.t('Tax Card File URL', 'رابط البطاقة الضريبية'), Icons.badge_outlined),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 48,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0284C7),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
+                ),
+                icon: _uploadingTaxCard
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.upload_file_rounded, size: 18),
+                label: Text(s.t('Upload', 'رفع')),
+                onPressed: _uploadingTaxCard ? null : _pickAndUploadTaxCard,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLocationsTab(AppState s) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(s.t('Company Locations', 'عناوين ومقرات الشركة'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            TextButton.icon(
+              icon: const Icon(Icons.add_location_alt_rounded, size: 18),
+              label: Text(s.t('Add Address', 'إضافة مقر')),
+              onPressed: _addAddressField,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: ListView.builder(
+            itemCount: _addresses.length,
+            itemBuilder: (ctx, idx) {
+              final a = _addresses[idx];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('${s.t("Location #", "المقر #")}${idx + 1}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0284C7))),
+                        if (_addresses.length > 1)
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                            onPressed: () => _removeAddressField(idx),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: a['ar'],
+                      decoration: _cleanDecoration(s.t('Address Details (Arabic)', 'تفاصيل العنوان بالعربي'), Icons.location_on_outlined),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: a['map_url'],
+                      decoration: _cleanDecoration(s.t('Google Maps Link', 'رابط موقع الخريطة'), Icons.map_outlined),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContactsTab(AppState s) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(s.t('Contacts & Personnel', 'مسؤولو التواصل'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            TextButton.icon(
+              icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+              label: Text(s.t('Add Contact', 'إضافة مسؤول')),
+              onPressed: _addContactField,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: ListView.builder(
+            itemCount: _contacts.length,
+            itemBuilder: (ctx, idx) {
+              final c = _contacts[idx];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('${s.t("Contact #", "المسؤول #")}${idx + 1}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0284C7))),
+                        if (_contacts.length > 1)
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                            onPressed: () => _removeContactField(idx),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: c['name_ar'],
+                      decoration: _cleanDecoration(s.t('Full Name', 'الاسم بالكامل'), Icons.person_outline_rounded),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: c['role'],
+                      decoration: _cleanDecoration(s.t('Job Title / Department', 'المسمى الوظيفي / القسم'), Icons.work_outline_rounded),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: c['phone'],
+                      keyboardType: TextInputType.phone,
+                      decoration: _cleanDecoration(s.t('Phone / WhatsApp Number', 'رقم الهاتف / الواتساب'), Icons.phone_outlined),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
+    final isDesktop = !widget.isMobile;
+
+    final navItems = [
+      {'icon': Icons.business_rounded, 'title': s.t('Main Details', 'البيانات الأساسية')},
+      {'icon': Icons.location_on_rounded, 'title': s.t('Locations', 'العناوين والخرائط')},
+      {'icon': Icons.contacts_rounded, 'title': s.t('Contacts', 'مسؤولو التواصل')},
+    ];
+
+    Widget currentTabBody;
+    switch (_activeNavIndex) {
+      case 0:
+        currentTabBody = _buildMainDetailsTab(s);
+        break;
+      case 1:
+        currentTabBody = _buildLocationsTab(s);
+        break;
+      case 2:
+        currentTabBody = _buildContactsTab(s);
+        break;
+      default:
+        currentTabBody = _buildMainDetailsTab(s);
+    }
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Center(
-        child: Container(
-          width: 480,
-          constraints: const BoxConstraints(maxHeight: 680),
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 30,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
+      insetPadding: isDesktop ? const EdgeInsets.symmetric(horizontal: 24, vertical: 32) : EdgeInsets.zero,
+      child: Container(
+        width: isDesktop ? 780 : double.infinity,
+        height: isDesktop ? 580 : double.infinity,
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(isDesktop ? 28 : 0),
+          boxShadow: [
+            if (isDesktop) BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 30, offset: const Offset(0, 10)),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
@@ -1557,104 +1787,92 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                   IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
                 ],
               ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: ListView(
-                  children: [
-                    TextField(
-                      controller: _nameAr,
-                      decoration: _cleanDecoration(s.t('Company Name (Arabic)', 'اسم الشركة بالعربية'), Icons.business_rounded),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _nameEn,
-                      decoration: _cleanDecoration(s.t('Company Name (English)', 'اسم الشركة بالإنجليزي'), Icons.language_rounded),
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(s.t('Holding Group?', 'مجموعة قابضة؟'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                      value: _isGroup,
-                      onChanged: (v) => setState(() => _isGroup = v),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
+            ),
+            const Divider(height: 1),
+
+            // Main Body with Sidebar Layout
+            Expanded(
+              child: isDesktop
+                  ? Row(
                       children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _taxCardUrl,
-                            decoration: _cleanDecoration(s.t('Tax Card File URL', 'رابط البطاقة الضريبية'), Icons.badge_outlined),
+                        // Left/Right Sidebar
+                        Container(
+                          width: 200,
+                          decoration: BoxDecoration(
+                            border: Border(left: BorderSide(color: Colors.grey.withOpacity(0.1))),
+                          ),
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                            itemCount: navItems.length,
+                            itemBuilder: (ctx, idx) {
+                              final item = navItems[idx];
+                              final isSel = _activeNavIndex == idx;
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                child: ListTile(
+                                  dense: true,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  tileColor: isSel ? const Color(0xFF0284C7).withOpacity(0.12) : Colors.transparent,
+                                  leading: Icon(item['icon'] as IconData, color: isSel ? const Color(0xFF0284C7) : Colors.grey.shade500, size: 18),
+                                  title: Text(
+                                    item['title'] as String,
+                                    style: TextStyle(fontWeight: isSel ? FontWeight.bold : FontWeight.normal, color: isSel ? const Color(0xFF0284C7) : null, fontSize: 13),
+                                  ),
+                                  onTap: () => setState(() => _activeNavIndex = idx),
+                                ),
+                              );
+                            },
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          height: 48,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0284C7),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              elevation: 0,
-                            ),
-                            icon: _uploadingTaxCard ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.upload_file_rounded, size: 18),
-                            label: Text(s.t('Upload', 'رفع')),
-                            onPressed: _uploadingTaxCard ? null : _pickAndUploadTaxCard,
+                        // Content Pane
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: currentTabBody,
                           ),
                         ),
                       ],
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          _buildMainDetailsTab(s),
+                          const Divider(height: 32),
+                          _buildLocationsTab(s),
+                          const Divider(height: 32),
+                          _buildContactsTab(s),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(s.t('Addresses:', 'العناوين والخرائط:'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(height: 8),
-                    ..._addresses.map((a) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Column(
-                          children: [
-                            TextField(controller: a['ar'], decoration: _cleanDecoration(s.t('Address (Arabic)', 'العنوان بالعربي'), Icons.location_on_outlined)),
-                            const SizedBox(height: 6),
-                            TextField(controller: a['map_url'], decoration: _cleanDecoration(s.t('Map Link', 'رابط الخريطة'), Icons.map_outlined)),
-                          ],
+            ),
+
+            // Footer Actions
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0284C7),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 0,
                         ),
-                      );
-                    }),
-                    const SizedBox(height: 12),
-                    Text(s.t('Contacts:', 'مسؤولو التواصل:'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(height: 8),
-                    ..._contacts.map((c) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Column(
-                          children: [
-                            TextField(controller: c['name_ar'], decoration: _cleanDecoration(s.t('Full Name', 'الاسم بالكامل'), Icons.person_outline_rounded)),
-                            const SizedBox(height: 6),
-                            TextField(controller: c['role'], decoration: _cleanDecoration(s.t('Job Title', 'المسمى الوظيفي'), Icons.work_outline_rounded)),
-                            const SizedBox(height: 6),
-                            TextField(controller: c['phone'], decoration: _cleanDecoration(s.t('Phone Number', 'رقم الهاتف'), Icons.phone_outlined)),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0284C7),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    elevation: 0,
+                        onPressed: _saving ? null : _saveAll,
+                        child: _saving
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : Text(s.t('Save Record', 'حفظ البيانات بالكامل'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
                   ),
-                  onPressed: _saving ? null : _saveAll,
-                  child: _saving ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Save Changes', 'حفظ البيانات'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
