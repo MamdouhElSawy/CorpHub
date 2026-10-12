@@ -1337,7 +1337,7 @@ class AppProvider {
   static String t(String en, String ar) => AppState.instance.isArabic ? ar : en;
 }
 
-// ----------------- استمارة الإضافة والتعديل بتصميم القائمة الجانبية (Stepped Vertical Navigation) -----------------
+// ----------------- استمارة الإضافة والتعديل المحدثة (موبايل ديستاوب مقسمة بتطابق نظيف) -----------------
 class AdvancedCompanyDialog extends StatefulWidget {
   final Map<String, dynamic>? company;
   final List<Map<String, dynamic>> allCompanies;
@@ -1535,58 +1535,60 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
   }
 
   Widget _buildMainDetailsTab(AppState s) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(s.t('General Information', 'البيانات الأساسية'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _nameAr,
-          decoration: _cleanDecoration(s.t('Company Name (Arabic)', 'اسم الشركة بالعربية'), Icons.business_rounded),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _nameEn,
-          decoration: _cleanDecoration(s.t('Company Name (English)', 'اسم الشركة بالإنجليزي'), Icons.language_rounded),
-        ),
-        const SizedBox(height: 12),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(s.t('Is Holding Group?', 'مجموعة قابضة؟'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-          value: _isGroup,
-          onChanged: (v) => setState(() => _isGroup = v),
-        ),
-        const SizedBox(height: 16),
-        Text(s.t('Tax Card File', 'البطاقة الضريبية'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _taxCardUrl,
-                decoration: _cleanDecoration(s.t('Tax Card File URL', 'رابط البطاقة الضريبية'), Icons.badge_outlined),
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              height: 48,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0284C7),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 0,
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(s.t('General Information', 'البيانات الأساسية'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _nameAr,
+            decoration: _cleanDecoration(s.t('Company Name (Arabic)', 'اسم الشركة بالعربية'), Icons.business_rounded),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _nameEn,
+            decoration: _cleanDecoration(s.t('Company Name (English)', 'اسم الشركة بالإنجليزي'), Icons.language_rounded),
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(s.t('Is Holding Group?', 'مجموعة قابضة؟'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            value: _isGroup,
+            onChanged: (v) => setState(() => _isGroup = v),
+          ),
+          const SizedBox(height: 16),
+          Text(s.t('Tax Card File', 'البطاقة الضريبية'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _taxCardUrl,
+                  decoration: _cleanDecoration(s.t('Tax Card File URL', 'رابط البطاقة الضريبية'), Icons.badge_outlined),
                 ),
-                icon: _uploadingTaxCard
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.upload_file_rounded, size: 18),
-                label: Text(s.t('Upload', 'رفع')),
-                onPressed: _uploadingTaxCard ? null : _pickAndUploadTaxCard,
               ),
-            ),
-          ],
-        ),
-      ],
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 0,
+                  ),
+                  icon: _uploadingTaxCard
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.upload_file_rounded, size: 18),
+                  label: Text(s.t('Upload', 'رفع')),
+                  onPressed: _uploadingTaxCard ? null : _pickAndUploadTaxCard,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1790,12 +1792,53 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
             ),
             const Divider(height: 1),
 
-            // Main Body with Sidebar Layout
+            // Top Horizontal Navigation Bar for Mobile View
+            if (!isDesktop)
+              Container(
+                color: Theme.of(context).cardColor,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: List.generate(navItems.length, (idx) {
+                    final item = navItems[idx];
+                    final isSel = _activeNavIndex == idx;
+                    return Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _activeNavIndex = idx),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: isSel ? const Color(0xFF0284C7) : Colors.grey.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(item['icon'] as IconData, color: isSel ? Colors.white : Colors.grey.shade600, size: 18),
+                              const SizedBox(height: 4),
+                              Text(
+                                item['title'] as String,
+                                style: TextStyle(fontSize: 11, fontWeight: isSel ? FontWeight.bold : FontWeight.normal, color: isSel ? Colors.white : Colors.grey.shade700),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+
+            // Main Content Area
             Expanded(
               child: isDesktop
                   ? Row(
                       children: [
-                        // Left/Right Sidebar
+                        // Left Sidebar for Desktop
                         Container(
                           width: 200,
                           decoration: BoxDecoration(
@@ -1833,17 +1876,9 @@ class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
                         ),
                       ],
                     )
-                  : SingleChildScrollView(
+                  : Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          _buildMainDetailsTab(s),
-                          const Divider(height: 32),
-                          _buildLocationsTab(s),
-                          const Divider(height: 32),
-                          _buildContactsTab(s),
-                        ],
-                      ),
+                      child: currentTabBody,
                     ),
             ),
 
@@ -2210,7 +2245,7 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   }
 }
 
-// ----------------- لوحة تحكم الإدارة بتصميم السايدبار المريح الهادئ -----------------
+// ----------------- لوحة تحكم الإدارة المحدثة والمدمجة -----------------
 class AdminPanelScreen extends StatefulWidget {
   final Map<String, bool> privacy;
   final VoidCallback onUpdate;
@@ -2234,8 +2269,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     final navItems = [
       {'icon': Icons.security_rounded, 'title': s.t('Privacy Settings', 'إعدادات الخصوصية')},
       {'icon': Icons.people_alt_rounded, 'title': s.t('User Management', 'إدارة المستخدمين')},
-      {'icon': Icons.mark_email_unread_rounded, 'title': s.t('Access Requests', 'طلبات الحسابات')},
-      {'icon': Icons.backup_rounded, 'title': s.t('Backup & Data', 'النسخ الاحتياطي')},
+      {'icon': Icons.mark_email_unread_rounded, 'title': s.t('Requests & Resets', 'الطلبات والتعيينات')},
+      {'icon': Icons.backup_rounded, 'title': s.t('Backup & Import', 'النسخ والبيانات')},
     ];
 
     Widget currentBody;
@@ -2247,10 +2282,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         currentBody = _UserManagementTab(currentUserId: widget.currentUserId);
         break;
       case 2:
-        currentBody = const _AccessRequestsTab();
+        currentBody = const _UnifiedRequestsTab();
         break;
       case 3:
-        currentBody = _BackupTab(companies: widget.companies, onRestore: widget.onUpdate);
+        currentBody = _AdvancedBackupTab(companies: widget.companies, onRestore: widget.onUpdate);
         break;
       default:
         currentBody = const SizedBox.shrink();
@@ -2336,18 +2371,13 @@ class _PrivacySettingsTab extends StatefulWidget {
 }
 
 class _PrivacySettingsTabState extends State<_PrivacySettingsTab> {
-  bool _saving = false;
-
   void _saveKey(String key, bool val) async {
-    setState(() => _saving = true);
     try {
       await Supabase.instance.client.from('system_settings').upsert({'key': key, 'value': val.toString()});
       widget.privacy[key] = val;
       widget.onUpdate();
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   @override
@@ -2417,6 +2447,83 @@ class _UserManagementTabState extends State<_UserManagementTab> {
     }
   }
 
+  void _openEditUserModal(Map<String, dynamic> u) {
+    final s = AppState.instance;
+    final usernameCtrl = TextEditingController(text: u['username'] ?? '');
+    final passCtrl = TextEditingController(text: u['password_hash'] ?? '');
+    String role = u['role'] ?? 'editor';
+    bool isActive = u['is_active'] == true;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: 380,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(24)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.t('Edit User Settings', 'تعديل بيانات المستخدم'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: usernameCtrl,
+                  decoration: InputDecoration(labelText: s.t('Username', 'اسم المستخدم')),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: passCtrl,
+                  decoration: InputDecoration(labelText: s.t('Password', 'كلمة المرور')),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: role,
+                  decoration: InputDecoration(labelText: s.t('Role', 'الصلاحية')),
+                  items: [
+                    DropdownMenuItem(value: 'admin', child: Text(s.t('Admin', 'مدير نظام'))),
+                    DropdownMenuItem(value: 'editor', child: Text(s.t('Editor', 'محرر بيانات'))),
+                  ],
+                  onChanged: (v) => setModalState(() => role = v!),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(s.t('Account Active', 'حساب نشط')),
+                  value: isActive,
+                  onChanged: (v) => setModalState(() => isActive = v),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0284C7), foregroundColor: Colors.white),
+                    onPressed: () async {
+                      await Supabase.instance.client.from('app_users').update({
+                        'username': usernameCtrl.text.trim(),
+                        'password_hash': passCtrl.text.trim(),
+                        'role': role,
+                        'is_active': isActive,
+                      }).eq('id', u['id']);
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        _fetchUsers();
+                      }
+                    },
+                    child: Text(s.t('Save Changes', 'حفظ التعديلات')),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
@@ -2444,15 +2551,27 @@ class _UserManagementTabState extends State<_UserManagementTab> {
                     itemBuilder: (ctx, idx) {
                       final u = _users[idx];
                       return ListTile(
-                        leading: CircleAvatar(child: Text((u['username'] ?? 'U')[0].toUpperCase())),
-                        title: Text(u['username'] ?? 'User'),
+                        leading: CircleAvatar(
+                          backgroundColor: const Color(0xFF0284C7).withOpacity(0.15),
+                          child: Text((u['username'] ?? 'U')[0].toUpperCase(), style: const TextStyle(color: Color(0xFF0284C7), fontWeight: FontWeight.bold)),
+                        ),
+                        title: Text(u['username'] ?? 'User', style: const TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text('PIN: ${u['pin_code']} | Role: ${u['role']}'),
-                        trailing: Switch(
-                          value: u['is_active'] == true,
-                          onChanged: (v) async {
-                            await Supabase.instance.client.from('app_users').update({'is_active': v}).eq('id', u['id']);
-                            _fetchUsers();
-                          },
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF0284C7)),
+                              onPressed: () => _openEditUserModal(u),
+                            ),
+                            Switch(
+                              value: u['is_active'] == true,
+                              onChanged: (v) async {
+                                await Supabase.instance.client.from('app_users').update({'is_active': v}).eq('id', u['id']);
+                                _fetchUsers();
+                              },
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -2464,28 +2583,36 @@ class _UserManagementTabState extends State<_UserManagementTab> {
   }
 }
 
-class _AccessRequestsTab extends StatefulWidget {
-  const _AccessRequestsTab();
+// ----------------- قائمة الطلبات المدمجة الشاملة -----------------
+class _UnifiedRequestsTab extends StatefulWidget {
+  const _UnifiedRequestsTab();
 
   @override
-  State<_AccessRequestsTab> createState() => _AccessRequestsTabState();
+  State<_UnifiedRequestsTab> createState() => _UnifiedRequestsTabState();
 }
 
-class _AccessRequestsTabState extends State<_AccessRequestsTab> {
-  List<Map<String, dynamic>> _reqs = [];
+class _UnifiedRequestsTabState extends State<_UnifiedRequestsTab> {
+  List<Map<String, dynamic>> _accessReqs = [];
+  List<Map<String, dynamic>> _resetReqs = [];
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchRequests();
+    _fetchAllRequests();
   }
 
-  Future<void> _fetchRequests() async {
+  Future<void> _fetchAllRequests() async {
     setState(() => _loading = true);
     try {
-      final res = await Supabase.instance.client.from('access_requests').select().order('created_at');
-      if (mounted) setState(() => _reqs = List<Map<String, dynamic>>.from(res));
+      final aRes = await Supabase.instance.client.from('access_requests').select().order('created_at');
+      final rRes = await Supabase.instance.client.from('password_resets').select().order('created_at');
+      if (mounted) {
+        setState(() {
+          _accessReqs = List<Map<String, dynamic>>.from(aRes);
+          _resetReqs = List<Map<String, dynamic>>.from(rRes);
+        });
+      }
     } catch (_) {
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -2502,30 +2629,74 @@ class _AccessRequestsTabState extends State<_AccessRequestsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(s.t('New Account Requests', 'طلبات إنشاء الحسابات الجديدة'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(s.t('Access & Password Requests', 'طلبات الحسابات واستعادة كلمة المرور'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchAllRequests),
+            ],
+          ),
           const SizedBox(height: 16),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _reqs.isEmpty
-                    ? Center(child: Text(s.t('No pending requests', 'لا توجد طلبات معلقة')))
-                    : ListView.separated(
-                        itemCount: _reqs.length,
-                        separatorBuilder: (_, __) => const Divider(),
-                        itemBuilder: (ctx, idx) {
-                          final r = _reqs[idx];
-                          return ListTile(
-                            title: Text(r['full_name'] ?? ''),
-                            subtitle: Text(r['phone'] ?? ''),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.redAccent),
-                              onPressed: () async {
-                                await Supabase.instance.client.from('access_requests').delete().eq('id', r['id']);
-                                _fetchRequests();
-                              },
-                            ),
-                          );
-                        },
+                : (_accessReqs.isEmpty && _resetReqs.isEmpty)
+                    ? Center(child: Text(s.t('No pending requests', 'لا توجد طلبات معلقة حالياً')))
+                    : ListView(
+                        children: [
+                          if (_accessReqs.isNotEmpty) ...[
+                            Text(s.t('New Account Requests', 'طلبات إنشاء الحسابات الجديدة'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0284C7))),
+                            const SizedBox(height: 8),
+                            ..._accessReqs.map((r) => Card(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: ListTile(
+                                    leading: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF0284C7)),
+                                    title: Text(r['full_name'] ?? ''),
+                                    subtitle: Text(r['phone'] ?? ''),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                      onPressed: () async {
+                                        await Supabase.instance.client.from('access_requests').delete().eq('id', r['id']);
+                                        _fetchAllRequests();
+                                      },
+                                    ),
+                                  ),
+                                )),
+                            const SizedBox(height: 16),
+                          ],
+                          if (_resetReqs.isNotEmpty) ...[
+                            Text(s.t('Password Reset Requests', 'طلبات استعادة وتعيين كلمة المرور'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.amber)),
+                            const SizedBox(height: 8),
+                            ..._resetReqs.map((r) => Card(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: ListTile(
+                                    leading: const Icon(Icons.lock_reset_rounded, color: Colors.amber),
+                                    title: Text('PIN: ${r['pin_code']} | Phone: ${r['phone']}'),
+                                    subtitle: Text('New Pass: ${r['new_password']}'),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.check_circle_outline, color: Colors.green),
+                                          onPressed: () async {
+                                            await Supabase.instance.client.from('app_users').update({'password_hash': r['new_password']}).eq('pin_code', r['pin_code']);
+                                            await Supabase.instance.client.from('password_resets').delete().eq('id', r['id']);
+                                            _fetchAllRequests();
+                                          },
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                          onPressed: () async {
+                                            await Supabase.instance.client.from('password_resets').delete().eq('id', r['id']);
+                                            _fetchAllRequests();
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )),
+                          ],
+                        ],
                       ),
           ),
         ],
@@ -2534,11 +2705,149 @@ class _AccessRequestsTabState extends State<_AccessRequestsTab> {
   }
 }
 
-class _BackupTab extends StatelessWidget {
+// ----------------- إدارة النسخ الاحتياطي واستيراد البيانات الشاملة -----------------
+class _AdvancedBackupTab extends StatefulWidget {
   final List<Map<String, dynamic>> companies;
   final VoidCallback onRestore;
 
-  const _BackupTab({required this.companies, required this.onRestore});
+  const _AdvancedBackupTab({required this.companies, required this.onRestore});
+
+  @override
+  State<_AdvancedBackupTab> createState() => _AdvancedBackupTabState();
+}
+
+class _AdvancedBackupTabState extends State<_AdvancedBackupTab> {
+  bool _working = false;
+
+  void _downloadTemplate() {
+    final templateData = [
+      {
+        'name_ar': 'شركة التنمية العربية',
+        'name_en': 'Arab Development Co',
+        'is_group': false,
+        'tax_card_url': '',
+        'company_addresses': [
+          {'type': 'mailing', 'address_ar': 'القاهرة - مدينة نصر', 'map_url': ''}
+        ],
+        'company_contacts': [
+          {'name_ar': 'أحمد محمود', 'role_ar': 'مدير المبيعات', 'phone': '01000000000'}
+        ]
+      }
+    ];
+
+    final str = jsonEncode(templateData);
+    final bytes = utf8.encode(str);
+    final blob = html.Blob([bytes]);
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.AnchorElement(href: url)
+      ..setAttribute("download", "corphub_template.json")
+      ..click();
+    html.Url.revokeObjectUrl(url);
+  }
+
+  void _exportCurrentData() {
+    final str = jsonEncode(widget.companies);
+    final bytes = utf8.encode(str);
+    final blob = html.Blob([bytes]);
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.AnchorElement(href: url)
+      ..setAttribute("download", "corphub_backup_${DateTime.now().millisecondsSinceEpoch}.json")
+      ..click();
+    html.Url.revokeObjectUrl(url);
+  }
+
+  void _importData({required bool isReplaceAll}) async {
+    final s = AppState.instance;
+    try {
+      final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json'], withData: true);
+      if (res == null || res.files.single.bytes == null) return;
+
+      setState(() => _working = true);
+      final jsonStr = utf8.decode(res.files.single.bytes!);
+      final List<dynamic> parsedList = jsonDecode(jsonStr);
+
+      if (isReplaceAll) {
+        await Supabase.instance.client.from('company_contacts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await Supabase.instance.client.from('company_addresses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await Supabase.instance.client.from('companies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      }
+
+      for (var item in parsedList) {
+        final cMap = Map<String, dynamic>.from(item);
+        final compRes = await Supabase.instance.client.from('companies').insert({
+          'name_ar': cMap['name_ar'],
+          'name_en': cMap['name_en'],
+          'is_group': cMap['is_group'] ?? false,
+          'tax_card_url': cMap['tax_card_url'],
+        }).select().single();
+
+        final compId = compRes['id'];
+
+        final addrs = cMap['company_addresses'] as List? ?? [];
+        for (var a in addrs) {
+          await Supabase.instance.client.from('company_addresses').insert({
+            'company_id': compId,
+            'type': a['type'] ?? 'mailing',
+            'address_ar': a['address_ar'],
+            'address_en': a['address_en'],
+            'map_url': a['map_url'],
+          });
+        }
+
+        final contacts = cMap['company_contacts'] as List? ?? [];
+        for (var c in contacts) {
+          await Supabase.instance.client.from('company_contacts').insert({
+            'company_id': compId,
+            'name_ar': c['name_ar'],
+            'name_en': c['name_en'],
+            'role_ar': c['role_ar'],
+            'role_en': c['role_en'],
+            'phone': c['phone'],
+          });
+        }
+      }
+
+      widget.onRestore();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s.t('Data imported successfully!', 'تم استيراد البيانات بنجاح!'))));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  void _deleteAllData() async {
+    final s = AppState.instance;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.t('Delete All Data', 'مسح كافة البيانات')),
+        content: Text(s.t('Are you sure you want to wipe ALL companies data?', 'هل أنت متأكد من مسح جميع الشركات بالكامل؟ لا يمكن التراجع!')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.t('Cancel', 'إلغاء'))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.t('Wipe All', 'مسح الكل')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _working = true);
+      try {
+        await Supabase.instance.client.from('company_contacts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await Supabase.instance.client.from('company_addresses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await Supabase.instance.client.from('companies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        widget.onRestore();
+      } finally {
+        if (mounted) setState(() => _working = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2550,23 +2859,47 @@ class _BackupTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(s.t('Backup & Data Management', 'إدارة البيانات والنسخ الاحتياطي'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(s.t('Backup & Data Operations', 'إدارة النسخ الاحتياطي واستيراد البيانات'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 20),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0284C7), foregroundColor: Colors.white),
-            icon: const Icon(Icons.download),
-            label: Text(s.t('Export Companies to JSON', 'تصدير كافة الشركات كملف JSON')),
-            onPressed: () {
-              final str = jsonEncode(companies);
-              final bytes = utf8.encode(str);
-              final blob = html.Blob([bytes]);
-              final url = html.Url.createObjectUrlFromBlob(blob);
-              html.AnchorElement(href: url)
-                ..setAttribute("download", "corphub_backup_${DateTime.now().millisecondsSinceEpoch}.json")
-                ..click();
-              html.Url.revokeObjectUrl(url);
-            },
-          ),
+          if (_working)
+            const Center(child: CircularProgressIndicator())
+          else
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0284C7), foregroundColor: Colors.white),
+                  icon: const Icon(Icons.download_rounded),
+                  label: Text(s.t('Download Current Data', 'تنزيل الداتا الحالية (JSON)')),
+                  onPressed: _exportCurrentData,
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+                  icon: const Icon(Icons.description_outlined),
+                  label: Text(s.t('Download Template', 'تنزيل التمبلت للرفع')),
+                  onPressed: _downloadTemplate,
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+                  icon: const Icon(Icons.note_add_rounded),
+                  label: Text(s.t('Append New Data', 'إضافة بيانات على البيانات الحالية')),
+                  onPressed: () => _importData(isReplaceAll: false),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800, foregroundColor: Colors.white),
+                  icon: const Icon(Icons.sync_problem_rounded),
+                  label: Text(s.t('Replace All Data', 'مسح الكل وإضافة جديد')),
+                  onPressed: () => _importData(isReplaceAll: true),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                  icon: const Icon(Icons.delete_forever_rounded),
+                  label: Text(s.t('Delete All Data', 'مسح كافة البيانات (Admin Only)')),
+                  onPressed: _deleteAllData,
+                ),
+              ],
+            ),
         ],
       ),
     );
