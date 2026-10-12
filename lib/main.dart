@@ -334,93 +334,122 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       builder: (ctx) => Directionality(
         textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
         child: StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text(s.t('Change Password', 'تغيير كلمة المرور')),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: oldPassCtrl,
-                  obscureText: true,
-                  decoration: InputDecoration(labelText: s.t('Current Password', 'كلمة المرور الحالية')),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: newPassCtrl,
-                  obscureText: true,
-                  decoration: InputDecoration(labelText: s.t('New Password', 'كلمة المرور الجديدة')),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: confirmPassCtrl,
-                  obscureText: true,
-                  decoration: InputDecoration(labelText: s.t('Confirm New Password', 'تأكيد كلمة المرور الجديدة')),
-                ),
-                if (err != null) ...[
+          builder: (ctx, setDialogState) => Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              width: 380,
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 30)],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(s.t('Change Password', 'تغيير كلمة المرور'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: oldPassCtrl,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      hintText: s.t('Current Password', 'كلمة المرور الحالية'),
+                      filled: true,
+                      fillColor: Colors.grey.withOpacity(0.06),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    ),
+                  ),
                   const SizedBox(height: 10),
-                  Text(err!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                  TextField(
+                    controller: newPassCtrl,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      hintText: s.t('New Password', 'كلمة المرور الجديدة'),
+                      filled: true,
+                      fillColor: Colors.grey.withOpacity(0.06),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: confirmPassCtrl,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      hintText: s.t('Confirm New Password', 'تأكيد كلمة المرور'),
+                      filled: true,
+                      fillColor: Colors.grey.withOpacity(0.06),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  if (err != null) ...[
+                    const SizedBox(height: 10),
+                    Text(err!, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                  ],
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0284C7),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: saving
+                          ? null
+                          : () async {
+                              final oldP = oldPassCtrl.text.trim();
+                              final newP = newPassCtrl.text.trim();
+                              final confP = confirmPassCtrl.text.trim();
+
+                              if (oldP != _currentUser!['password_hash']) {
+                                setDialogState(() => err = s.t('Incorrect current password', 'كلمة المرور الحالية غير صحيحة'));
+                                return;
+                              }
+                              if (newP.isEmpty) {
+                                setDialogState(() => err = s.t('New password cannot be empty', 'كلمة المرور لا يمكن أن تكون فارغة'));
+                                return;
+                              }
+                              if (newP != confP) {
+                                setDialogState(() => err = s.t('Passwords do not match', 'كلمتا المرور غير متطابقتين'));
+                                return;
+                              }
+
+                              setDialogState(() {
+                                saving = true;
+                                err = null;
+                              });
+
+                              try {
+                                await Supabase.instance.client
+                                    .from('app_users')
+                                    .update({'password_hash': newP})
+                                    .eq('id', _currentUser!['id']);
+
+                                _currentUser!['password_hash'] = newP;
+                                final prefs = await SharedPreferences.getInstance();
+                                if (prefs.containsKey('saved_user_session')) {
+                                  await prefs.setString('saved_user_session', jsonEncode(_currentUser));
+                                }
+
+                                if (mounted) {
+                                  Navigator.pop(ctx);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(s.t('Password changed successfully!', 'تم تغيير كلمة المرور بنجاح!'))),
+                                  );
+                                }
+                              } catch (e) {
+                                setDialogState(() => err = e.toString());
+                              } finally {
+                                setDialogState(() => saving = false);
+                              }
+                            },
+                      child: saving ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Update Password', 'تحديث كلمة المرور'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
                 ],
-              ],
+              ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(s.t('Cancel', 'إلغاء')),
-              ),
-              ElevatedButton(
-                onPressed: saving
-                    ? null
-                    : () async {
-                        final oldP = oldPassCtrl.text.trim();
-                        final newP = newPassCtrl.text.trim();
-                        final confP = confirmPassCtrl.text.trim();
-
-                        if (oldP != _currentUser!['password_hash']) {
-                          setDialogState(() => err = s.t('Incorrect current password', 'كلمة المرور الحالية غير صحيحة'));
-                          return;
-                        }
-                        if (newP.isEmpty) {
-                          setDialogState(() => err = s.t('New password cannot be empty', 'كلمة المرور لا يمكن أن تكون فارغة'));
-                          return;
-                        }
-                        if (newP != confP) {
-                          setDialogState(() => err = s.t('Passwords do not match', 'كلمتا المرور غير متطابقتين'));
-                          return;
-                        }
-
-                        setDialogState(() {
-                          saving = true;
-                          err = null;
-                        });
-
-                        try {
-                          await Supabase.instance.client
-                              .from('app_users')
-                              .update({'password_hash': newP})
-                              .eq('id', _currentUser!['id']);
-
-                          _currentUser!['password_hash'] = newP;
-                          final prefs = await SharedPreferences.getInstance();
-                          if (prefs.containsKey('saved_user_session')) {
-                            await prefs.setString('saved_user_session', jsonEncode(_currentUser));
-                          }
-
-                          if (mounted) {
-                            Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(s.t('Password changed successfully!', 'تم تغيير كلمة المرور بنجاح!'))),
-                            );
-                          }
-                        } catch (e) {
-                          setDialogState(() => err = e.toString());
-                        } finally {
-                          setDialogState(() => saving = false);
-                        }
-                      },
-                child: saving ? const CircularProgressIndicator() : Text(s.t('Update Password', 'تحديث كلمة المرور')),
-              ),
-            ],
           ),
         ),
       ),
@@ -1008,7 +1037,6 @@ class CompanyDetailsContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Card (Responsive)
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -1091,7 +1119,6 @@ class CompanyDetailsContent extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Addresses
           if (addresses.isNotEmpty) ...[
             Text(s.t('Addresses & Locations', 'العناوين والخرائط'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
@@ -1131,7 +1158,6 @@ class CompanyDetailsContent extends StatelessWidget {
             const SizedBox(height: 20),
           ],
 
-          // Contacts
           if (contacts.isNotEmpty) ...[
             Text(s.t('Contacts & Personnel', 'مسؤولو التواصل'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
@@ -1311,20 +1337,326 @@ class AppProvider {
   static String t(String en, String ar) => AppState.instance.isArabic ? ar : en;
 }
 
-class AdvancedCompanyDialog extends StatelessWidget {
+// ----------------- استمارة الإضافة والتعديل بتصميم موحد عائم ونظيف -----------------
+class AdvancedCompanyDialog extends StatefulWidget {
   final Map<String, dynamic>? company;
   final List<Map<String, dynamic>> allCompanies;
   final bool isMobile;
   final VoidCallback? onDeleteRequested;
 
-  const AdvancedCompanyDialog({super.key, this.company, required this.allCompanies, required this.isMobile, this.onDeleteRequested});
+  const AdvancedCompanyDialog({
+    super.key,
+    this.company,
+    required this.allCompanies,
+    required this.isMobile,
+    this.onDeleteRequested,
+  });
+
+  @override
+  State<AdvancedCompanyDialog> createState() => _AdvancedCompanyDialogState();
+}
+
+class _AdvancedCompanyDialogState extends State<AdvancedCompanyDialog> {
+  final _nameEn = TextEditingController();
+  final _nameAr = TextEditingController();
+  final _taxCardUrl = TextEditingController();
+
+  bool _isGroup = false;
+  bool _saving = false;
+  bool _uploadingTaxCard = false;
+
+  final List<Map<String, dynamic>> _addresses = [];
+  final List<Map<String, dynamic>> _contacts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.company != null) {
+      _nameEn.text = widget.company!['name_en'] ?? '';
+      _nameAr.text = widget.company!['name_ar'] ?? '';
+      _taxCardUrl.text = widget.company!['tax_card_url'] ?? '';
+      _isGroup = widget.company!['is_group'] == true;
+
+      final rawAddrs = widget.company!['company_addresses'] as List? ?? [];
+      for (var a in rawAddrs) {
+        _addresses.add({
+          'type': a['type'] ?? 'mailing',
+          'en': TextEditingController(text: a['address_en'] ?? ''),
+          'ar': TextEditingController(text: a['address_ar'] ?? ''),
+          'map_url': TextEditingController(text: a['map_url'] ?? ''),
+        });
+      }
+
+      final rawContacts = widget.company!['company_contacts'] as List? ?? [];
+      for (var c in rawContacts) {
+        _contacts.add({
+          'name_en': TextEditingController(text: c['name_en'] ?? ''),
+          'name_ar': TextEditingController(text: c['name_ar'] ?? ''),
+          'role': TextEditingController(text: c['role_en'] ?? c['role_ar'] ?? ''),
+          'phone': TextEditingController(text: c['phone'] ?? ''),
+        });
+      }
+    } else {
+      _addresses.add({'type': 'mailing', 'en': TextEditingController(), 'ar': TextEditingController(), 'map_url': TextEditingController()});
+      _contacts.add({'name_en': TextEditingController(), 'name_ar': TextEditingController(), 'role': TextEditingController(), 'phone': TextEditingController()});
+    }
+  }
+
+  Future<void> _pickAndUploadTaxCard() async {
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+        withData: true,
+      );
+
+      if (res == null || res.files.single.bytes == null) return;
+
+      setState(() => _uploadingTaxCard = true);
+      Uint8List fileBytes = res.files.single.bytes!;
+      final ext = res.files.single.extension?.toLowerCase() ?? 'png';
+      final isPdf = ext == 'pdf';
+
+      final fileName = 'tax_card_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final contentType = isPdf ? 'application/pdf' : 'image/png';
+
+      await Supabase.instance.client.storage.from('tax-cards').uploadBinary(
+            fileName,
+            fileBytes,
+            fileOptions: FileOptions(upsert: true, contentType: contentType),
+          );
+
+      final publicUrl = Supabase.instance.client.storage.from('tax-cards').getPublicUrl(fileName);
+      setState(() => _taxCardUrl.text = publicUrl);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _uploadingTaxCard = false);
+    }
+  }
+
+  void _saveAll() async {
+    final en = _nameEn.text.trim();
+    final ar = _nameAr.text.trim();
+    if (en.isEmpty && ar.isEmpty) return;
+
+    setState(() => _saving = true);
+    try {
+      final compData = {
+        'name_en': en.isEmpty ? null : en,
+        'name_ar': ar.isEmpty ? null : ar,
+        'is_group': _isGroup,
+        'tax_card_url': _taxCardUrl.text.trim().isEmpty ? null : _taxCardUrl.text.trim(),
+      };
+
+      String compId;
+      if (widget.company == null) {
+        final res = await Supabase.instance.client.from('companies').insert(compData).select().single();
+        compId = res['id'];
+      } else {
+        compId = widget.company!['id'];
+        await Supabase.instance.client.from('companies').update(compData).eq('id', compId);
+        await Supabase.instance.client.from('company_addresses').delete().eq('company_id', compId);
+        await Supabase.instance.client.from('company_contacts').delete().eq('company_id', compId);
+      }
+
+      for (var a in _addresses) {
+        final aEn = (a['en'] as TextEditingController).text.trim();
+        final aAr = (a['ar'] as TextEditingController).text.trim();
+        final mapUrl = (a['map_url'] as TextEditingController).text.trim();
+        if (aEn.isNotEmpty || aAr.isNotEmpty || mapUrl.isNotEmpty) {
+          await Supabase.instance.client.from('company_addresses').insert({
+            'company_id': compId,
+            'type': a['type'],
+            'address_en': aEn.isEmpty ? null : aEn,
+            'address_ar': aAr.isEmpty ? null : aAr,
+            'map_url': mapUrl.isEmpty ? null : mapUrl,
+          });
+        }
+      }
+
+      for (var c in _contacts) {
+        final cEn = (c['name_en'] as TextEditingController).text.trim();
+        final cAr = (c['name_ar'] as TextEditingController).text.trim();
+        final role = (c['role'] as TextEditingController).text.trim();
+        final phone = (c['phone'] as TextEditingController).text.trim();
+        if (cEn.isNotEmpty || cAr.isNotEmpty || phone.isNotEmpty) {
+          await Supabase.instance.client.from('company_contacts').insert({
+            'company_id': compId,
+            'name_en': cEn.isEmpty ? null : cEn,
+            'name_ar': cAr.isEmpty ? null : cAr,
+            'role_en': role.isEmpty ? null : role,
+            'role_ar': role.isEmpty ? null : role,
+            'phone': phone.isEmpty ? null : phone,
+          });
+        }
+      }
+
+      if (mounted) Navigator.pop(context, true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  InputDecoration _cleanDecoration(String hint, IconData icon) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(icon, size: 20),
+      filled: true,
+      fillColor: Colors.grey.withOpacity(0.06),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('إضافة / تعديل شركة'),
-      content: const Text('شاشة التعديل متاحة...'),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
+    final s = AppState.instance;
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Center(
+        child: Container(
+          width: 480,
+          constraints: const BoxConstraints(maxHeight: 680),
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0284C7).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(widget.company == null ? Icons.add_business_rounded : Icons.edit_note_rounded, color: const Color(0xFF0284C7), size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        widget.company == null ? s.t('Add New Company', 'إضافة شركة جديدة') : s.t('Edit Company', 'تعديل بيانات الشركة'),
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView(
+                  children: [
+                    TextField(
+                      controller: _nameAr,
+                      decoration: _cleanDecoration(s.t('Company Name (Arabic)', 'اسم الشركة بالعربية'), Icons.business_rounded),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _nameEn,
+                      decoration: _cleanDecoration(s.t('Company Name (English)', 'اسم الشركة بالإنجليزي'), Icons.language_rounded),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(s.t('Holding Group?', 'مجموعة قابضة؟'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      value: _isGroup,
+                      onChanged: (v) => setState(() => _isGroup = v),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _taxCardUrl,
+                            decoration: _cleanDecoration(s.t('Tax Card File URL', 'رابط البطاقة الضريبية'), Icons.badge_outlined),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0284C7),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              elevation: 0,
+                            ),
+                            icon: _uploadingTaxCard ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.upload_file_rounded, size: 18),
+                            label: Text(s.t('Upload', 'رفع')),
+                            onPressed: _uploadingTaxCard ? null : _pickAndUploadTaxCard,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(s.t('Addresses:', 'العناوين والخرائط:'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    ..._addresses.map((a) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Column(
+                          children: [
+                            TextField(controller: a['ar'], decoration: _cleanDecoration(s.t('Address (Arabic)', 'العنوان بالعربي'), Icons.location_on_outlined)),
+                            const SizedBox(height: 6),
+                            TextField(controller: a['map_url'], decoration: _cleanDecoration(s.t('Map Link', 'رابط الخريطة'), Icons.map_outlined)),
+                          ],
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 12),
+                    Text(s.t('Contacts:', 'مسؤولو التواصل:'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    ..._contacts.map((c) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Column(
+                          children: [
+                            TextField(controller: c['name_ar'], decoration: _cleanDecoration(s.t('Full Name', 'الاسم بالكامل'), Icons.person_outline_rounded)),
+                            const SizedBox(height: 6),
+                            TextField(controller: c['role'], decoration: _cleanDecoration(s.t('Job Title', 'المسمى الوظيفي'), Icons.work_outline_rounded)),
+                            const SizedBox(height: 6),
+                            TextField(controller: c['phone'], decoration: _cleanDecoration(s.t('Phone Number', 'رقم الهاتف'), Icons.phone_outlined)),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 0,
+                  ),
+                  onPressed: _saving ? null : _saveAll,
+                  child: _saving ? const CircularProgressIndicator(color: Colors.white) : Text(s.t('Save Changes', 'حفظ البيانات'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1660,7 +1992,8 @@ class _CleanLoginDialogState extends State<CleanLoginDialog> {
   }
 }
 
-class AdminPanelScreen extends StatelessWidget {
+// ----------------- لوحة تحكم الإدارة بتصميم السايدبار المريح الهادئ -----------------
+class AdminPanelScreen extends StatefulWidget {
   final Map<String, bool> privacy;
   final VoidCallback onUpdate;
   final List<Map<String, dynamic>> companies;
@@ -1669,10 +2002,355 @@ class AdminPanelScreen extends StatelessWidget {
   const AdminPanelScreen({super.key, required this.privacy, required this.onUpdate, required this.companies, this.currentUserId});
 
   @override
+  State<AdminPanelScreen> createState() => _AdminPanelScreenState();
+}
+
+class _AdminPanelScreenState extends State<AdminPanelScreen> {
+  int _selectedTabIndex = 0;
+
+  @override
   Widget build(BuildContext context) {
+    final s = AppState.instance;
+    final isDesktop = MediaQuery.of(context).size.width >= 768;
+
+    final navItems = [
+      {'icon': Icons.security_rounded, 'title': s.t('Privacy Settings', 'إعدادات الخصوصية')},
+      {'icon': Icons.people_alt_rounded, 'title': s.t('User Management', 'إدارة المستخدمين')},
+      {'icon': Icons.mark_email_unread_rounded, 'title': s.t('Access Requests', 'طلبات الحسابات')},
+      {'icon': Icons.backup_rounded, 'title': s.t('Backup & Data', 'النسخ الاحتياطي')},
+    ];
+
+    Widget currentBody;
+    switch (_selectedTabIndex) {
+      case 0:
+        currentBody = _PrivacySettingsTab(privacy: widget.privacy, onUpdate: widget.onUpdate);
+        break;
+      case 1:
+        currentBody = _UserManagementTab(currentUserId: widget.currentUserId);
+        break;
+      case 2:
+        currentBody = const _AccessRequestsTab();
+        break;
+      case 3:
+        currentBody = _BackupTab(companies: widget.companies, onRestore: widget.onUpdate);
+        break;
+      default:
+        currentBody = const SizedBox.shrink();
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('لوحة تحكم الإدارة')),
-      body: const Center(child: Text('لوحة التحكم قيد التصميم...')),
+      appBar: AppBar(
+        title: Text(s.t('Admin Control Panel', 'لوحة تحكم الإدارة'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        elevation: 0,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+      ),
+      body: isDesktop
+          ? Row(
+              children: [
+                Container(
+                  width: 240,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    border: Border(left: BorderSide(color: Colors.grey.withOpacity(0.12))),
+                  ),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                    itemCount: navItems.length,
+                    itemBuilder: (ctx, idx) {
+                      final item = navItems[idx];
+                      final isSel = _selectedTabIndex == idx;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        child: ListTile(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          tileColor: isSel ? const Color(0xFF0284C7).withOpacity(0.12) : Colors.transparent,
+                          leading: Icon(item['icon'] as IconData, color: isSel ? const Color(0xFF0284C7) : Colors.grey.shade500, size: 20),
+                          title: Text(
+                            item['title'] as String,
+                            style: TextStyle(fontWeight: isSel ? FontWeight.bold : FontWeight.normal, color: isSel ? const Color(0xFF0284C7) : null, fontSize: 13),
+                          ),
+                          onTap: () => setState(() => _selectedTabIndex = idx),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Expanded(child: Padding(padding: const EdgeInsets.all(24), child: currentBody)),
+              ],
+            )
+          : Column(
+              children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: List.generate(navItems.length, (idx) {
+                      final item = navItems[idx];
+                      final isSel = _selectedTabIndex == idx;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: ChoiceChip(
+                          label: Text(item['title'] as String),
+                          selected: isSel,
+                          onSelected: (_) => setState(() => _selectedTabIndex = idx),
+                          selectedColor: const Color(0xFF0284C7),
+                          labelStyle: TextStyle(color: isSel ? Colors.white : null, fontWeight: isSel ? FontWeight.bold : FontWeight.normal),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                Expanded(child: Padding(padding: const EdgeInsets.all(16), child: currentBody)),
+              ],
+            ),
+    );
+  }
+}
+
+class _PrivacySettingsTab extends StatefulWidget {
+  final Map<String, bool> privacy;
+  final VoidCallback onUpdate;
+
+  const _PrivacySettingsTab({required this.privacy, required this.onUpdate});
+
+  @override
+  State<_PrivacySettingsTab> createState() => _PrivacySettingsTabState();
+}
+
+class _PrivacySettingsTabState extends State<_PrivacySettingsTab> {
+  bool _saving = false;
+
+  void _saveKey(String key, bool val) async {
+    setState(() => _saving = true);
+    try {
+      await Supabase.instance.client.from('system_settings').upsert({'key': key, 'value': val.toString()});
+      widget.privacy[key] = val;
+      widget.onUpdate();
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState.instance;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(s.t('Guest Visibility Settings', 'إعدادات خصوصية الزوار والضيوف'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 16),
+          SwitchListTile(
+            title: Text(s.t('Allow Public Browsing', 'السماح بالاستعراض العام بدون تسجيل')),
+            value: widget.privacy['allow_public_read'] ?? true,
+            onChanged: (v) => _saveKey('allow_public_read', v),
+          ),
+          SwitchListTile(
+            title: Text(s.t('Show Tax Card to Public', 'إظهار البطاقة الضريبية للعامة')),
+            value: widget.privacy['public_show_tax_card'] ?? false,
+            onChanged: (v) => _saveKey('public_show_tax_card', v),
+          ),
+          SwitchListTile(
+            title: Text(s.t('Show Phone Numbers to Public', 'إظهار أرقام الهواتف للعامة')),
+            value: widget.privacy['public_show_phones'] ?? false,
+            onChanged: (v) => _saveKey('public_show_phones', v),
+          ),
+          SwitchListTile(
+            title: Text(s.t('Show Operation Addresses to Public', 'إظهار عناوين المقرات والتطبيق للعامة')),
+            value: widget.privacy['public_show_operation_addresses'] ?? false,
+            onChanged: (v) => _saveKey('public_show_operation_addresses', v),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UserManagementTab extends StatefulWidget {
+  final String? currentUserId;
+  const _UserManagementTab({this.currentUserId});
+
+  @override
+  State<_UserManagementTab> createState() => _UserManagementTabState();
+}
+
+class _UserManagementTabState extends State<_UserManagementTab> {
+  List<Map<String, dynamic>> _users = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUsers();
+  }
+
+  Future<void> _fetchUsers() async {
+    setState(() => _loading = true);
+    try {
+      final res = await Supabase.instance.client.from('app_users').select().order('created_at');
+      if (mounted) setState(() => _users = List<Map<String, dynamic>>.from(res));
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState.instance;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(s.t('System Users', 'قائمة مستخدمي النظام'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchUsers),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView.separated(
+                    itemCount: _users.length,
+                    separatorBuilder: (_, __) => const Divider(),
+                    itemBuilder: (ctx, idx) {
+                      final u = _users[idx];
+                      return ListTile(
+                        leading: CircleAvatar(child: Text((u['username'] ?? 'U')[0].toUpperCase())),
+                        title: Text(u['username'] ?? 'User'),
+                        subtitle: Text('PIN: ${u['pin_code']} | Role: ${u['role']}'),
+                        trailing: Switch(
+                          value: u['is_active'] == true,
+                          onChanged: (v) async {
+                            await Supabase.instance.client.from('app_users').update({'is_active': v}).eq('id', u['id']);
+                            _fetchUsers();
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccessRequestsTab extends StatefulWidget {
+  const _AccessRequestsTab();
+
+  @override
+  State<_AccessRequestsTab> createState() => _AccessRequestsTabState();
+}
+
+class _AccessRequestsTabState extends State<_AccessRequestsTab> {
+  List<Map<String, dynamic>> _reqs = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRequests();
+  }
+
+  Future<void> _fetchRequests() async {
+    setState(() => _loading = true);
+    try {
+      final res = await Supabase.instance.client.from('access_requests').select().order('created_at');
+      if (mounted) setState(() => _reqs = List<Map<String, dynamic>>.from(res));
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState.instance;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(s.t('New Account Requests', 'طلبات إنشاء الحسابات الجديدة'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 16),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _reqs.isEmpty
+                    ? Center(child: Text(s.t('No pending requests', 'لا توجد طلبات معلقة')))
+                    : ListView.separated(
+                        itemCount: _reqs.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (ctx, idx) {
+                          final r = _reqs[idx];
+                          return ListTile(
+                            title: Text(r['full_name'] ?? ''),
+                            subtitle: Text(r['phone'] ?? ''),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.redAccent),
+                              onPressed: () async {
+                                await Supabase.instance.client.from('access_requests').delete().eq('id', r['id']);
+                                _fetchRequests();
+                              },
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackupTab extends StatelessWidget {
+  final List<Map<String, dynamic>> companies;
+  final VoidCallback onRestore;
+
+  const _BackupTab({required this.companies, required this.onRestore});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppState.instance;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(s.t('Backup & Data Management', 'إدارة البيانات والنسخ الاحتياطي'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0284C7), foregroundColor: Colors.white),
+            icon: const Icon(Icons.download),
+            label: Text(s.t('Export Companies to JSON', 'تصدير كافة الشركات كملف JSON')),
+            onPressed: () {
+              final str = jsonEncode(companies);
+              final bytes = utf8.encode(str);
+              final blob = html.Blob([bytes]);
+              final url = html.Url.createObjectUrlFromBlob(blob);
+              html.AnchorElement(href: url)
+                ..setAttribute("download", "corphub_backup_${DateTime.now().millisecondsSinceEpoch}.json")
+                ..click();
+              html.Url.revokeObjectUrl(url);
+            },
+          ),
+        ],
+      ),
     );
   }
 }
